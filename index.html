@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terminal & Claude Code Drills</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+    padding: 20px;
+  }
+  #app { width: 100%; max-width: 720px; }
+  .terminal {
+    background: #0d1117; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+  }
+  .terminal-bar {
+    background: #161b22; padding: 12px 16px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #21262d;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-red { background: #ff5f57; }
+  .dot-yellow { background: #febc2e; }
+  .dot-green { background: #28c840; }
+  .terminal-title {
+    color: #8b949e; font-size: 13px; margin-left: 8px; flex: 1; text-align: center;
+  }
+  .terminal-body {
+    padding: 20px; min-height: 420px; max-height: 70vh; overflow-y: auto;
+  }
+  .terminal-body::-webkit-scrollbar { width: 6px; }
+  .terminal-body::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+  .line { color: #c9d1d9; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .line.dim { color: #484f58; }
+  .line.green { color: #3fb950; }
+  .line.red { color: #f85149; }
+  .line.yellow { color: #d29922; }
+  .line.bold { font-weight: 700; }
+  .line.heading { color: #58a6ff; font-weight: 700; font-size: 15px; padding: 6px 0; }
+
+  .format-tag {
+    display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
+    border-radius: 3px; margin-left: 8px; vertical-align: middle;
+  }
+  .format-tag.type { background: #238636; color: #fff; }
+  .format-tag.choice { background: #58a6ff; color: #0d1117; }
+  .format-tag.tf { background: #bc8cff; color: #0d1117; }
+  .format-tag.reverse { background: #d29922; color: #0d1117; }
+
+  .input-row { display: flex; align-items: center; margin-top: 8px; padding: 2px 0; }
+  .prompt-symbol { color: #3fb950; font-weight: 700; margin-right: 8px; font-size: 14px; user-select: none; }
+  #input {
+    flex: 1; background: none; border: none; color: #f0f6fc;
+    font-family: inherit; font-size: 14px; outline: none; caret-color: #58a6ff;
+  }
+  #input::placeholder { color: #30363d; }
+
+  /* Multiple choice */
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .choice-btn {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 12px; color: #c9d1d9; font-family: inherit; font-size: 13px;
+    cursor: pointer; text-align: left; transition: all 0.15s;
+  }
+  .choice-btn:hover { background: #1c2333; border-color: #58a6ff; color: #f0f6fc; }
+  .choice-btn.correct { background: #0f2d16; border-color: #3fb950; color: #3fb950; }
+  .choice-btn.wrong { background: #2d0f0f; border-color: #f85149; color: #f85149; }
+  .choice-btn.reveal { border-color: #3fb950; color: #3fb950; opacity: 0.7; }
+  .choice-btn .choice-key {
+    display: inline-block; width: 22px; height: 22px; border-radius: 4px;
+    background: #21262d; color: #8b949e; text-align: center; line-height: 22px;
+    font-size: 11px; font-weight: 700; margin-right: 8px; flex-shrink: 0;
+  }
+  .choice-btn.correct .choice-key { background: #238636; color: #fff; }
+  .choice-btn.wrong .choice-key { background: #da3633; color: #fff; }
+
+  /* True/False */
+  .tf-statement {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 16px; margin: 12px 0; font-size: 14px; color: #f0f6fc; line-height: 1.6;
+  }
+  .tf-statement .tf-cmd { color: #3fb950; font-weight: 700; }
+  .tf-statement .tf-arrow { color: #484f58; margin: 0 8px; }
+  .tf-buttons { display: flex; gap: 10px; margin: 8px 0; }
+  .tf-btn {
+    flex: 1; padding: 14px; border-radius: 8px; font-family: inherit;
+    font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.15s;
+    border: 2px solid;
+  }
+  .tf-btn.true-btn { background: #0f2d16; border-color: #238636; color: #3fb950; }
+  .tf-btn.true-btn:hover { background: #163b22; }
+  .tf-btn.false-btn { background: #2d0f0f; border-color: #da3633; color: #f85149; }
+  .tf-btn.false-btn:hover { background: #3b1616; }
+  .tf-btn.selected { opacity: 1; transform: scale(1.02); }
+  .tf-btn.dimmed { opacity: 0.3; pointer-events: none; }
+
+  /* Reverse */
+  .reverse-cmd {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 14px 16px; margin: 10px 0; font-size: 16px; text-align: center;
+  }
+  .reverse-cmd code { color: #3fb950; font-weight: 700; font-size: 18px; }
+
+  /* Score bar */
+  .score-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 20px; background: #161b22;
+    border-top: 1px solid #21262d; font-size: 13px; color: #8b949e;
+  }
+  .score-bar .score { color: #3fb950; font-weight: 700; }
+  .score-bar .streak { color: #d29922; }
+  .progress { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; max-width: 50%; justify-content: center; }
+  .pip { width: 8px; height: 8px; border-radius: 50%; background: #21262d; transition: background 0.3s; }
+  .pip.correct { background: #3fb950; }
+  .pip.wrong { background: #f85149; }
+  .pip.retry { background: #d29922; }
+  .pip.current { background: #58a6ff; box-shadow: 0 0 6px #58a6ff; }
+
+  /* Categories */
+  .categories { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .cat-btn {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 14px 12px; color: #c9d1d9; font-family: inherit; font-size: 13px;
+    cursor: pointer; text-align: left; transition: all 0.15s;
+  }
+  .cat-btn:hover { background: #1c2333; border-color: #58a6ff; color: #f0f6fc; }
+  .cat-btn .cat-num { color: #58a6ff; font-weight: 700; margin-right: 6px; }
+  .cat-btn .cat-desc { display: block; color: #484f58; font-size: 11px; margin-top: 4px; }
+
+  /* Results */
+  .result-card {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 20px; margin: 12px 0; text-align: center;
+  }
+  .result-card .big-score { font-size: 48px; font-weight: 700; }
+  .result-card .pct { font-size: 20px; color: #8b949e; margin-top: 4px; }
+  .result-card .msg { margin-top: 12px; color: #8b949e; font-size: 14px; }
+  .review-list {
+    text-align: left; margin: 12px 0; padding: 12px;
+    background: #0d1117; border-radius: 6px; border: 1px solid #21262d;
+  }
+  .review-item { padding: 6px 0; font-size: 13px; border-bottom: 1px solid #161b22; }
+  .review-item:last-child { border: none; }
+  .review-item .q { color: #8b949e; }
+  .review-item .a { color: #3fb950; font-weight: 600; }
+
+  /* Buttons */
+  .btn {
+    background: #238636; border: 1px solid #2ea043; color: #fff;
+    font-family: inherit; font-size: 14px; padding: 10px 24px;
+    border-radius: 6px; cursor: pointer; margin: 4px; transition: background 0.15s;
+  }
+  .btn:hover { background: #2ea043; }
+  .btn.secondary { background: #21262d; border-color: #30363d; }
+  .btn.secondary:hover { background: #30363d; }
+  .btn.drill-more { background: #6e40c9; border-color: #8957e5; }
+  .btn.drill-more:hover { background: #8957e5; }
+
+  .hint-btn {
+    background: none; border: 1px solid #30363d; color: #484f58;
+    font-family: inherit; font-size: 11px; padding: 2px 8px;
+    border-radius: 4px; cursor: pointer;
+  }
+  .hint-btn:hover { color: #8b949e; border-color: #484f58; }
+  .hint-text { color: #d29922; font-size: 12px; margin-top: 4px; font-style: italic; }
+
+  .explain {
+    background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+    padding: 10px 12px; margin: 8px 0; font-size: 13px; color: #8b949e; line-height: 1.6;
+  }
+  .explain strong { color: #58a6ff; font-weight: 600; }
+
+  .retry-badge {
+    display: inline-block; background: #d29922; color: #0d1117;
+    font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; margin-left: 8px;
+  }
+
+  .action-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  @media (max-width: 500px) {
+    .categories { grid-template-columns: 1fr; }
+    .choices { grid-template-columns: 1fr; }
+    .terminal-body { padding: 14px; min-height: 350px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="terminal">
+    <div class="terminal-bar">
+      <div class="dot dot-red"></div>
+      <div class="dot dot-yellow"></div>
+      <div class="dot dot-green"></div>
+      <div class="terminal-title">Terminal Drills — noat@mac</div>
+    </div>
+    <div class="terminal-body" id="body"></div>
+    <div class="score-bar" id="scorebar" style="display:none">
+      <div>Score: <span class="score" id="scoreNum">0/0</span></div>
+      <div class="progress" id="pips"></div>
+      <div class="streak" id="streakText"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+//  QUESTION BANK
+//  Each question: q, best, desc, accept(), hint, explain
+//  desc = short description of what the command does (for reverse & true/false)
+// ─────────────────────────────────────────
+
+const DRILLS = {
+  navigation: {
+    title: "Where Am I?",
+    desc: "Navigation basics",
+    questions: [
+      { q: "What command shows which folder you're currently in?", best: "pwd", desc: "Shows the full path of the folder you're in", accept: s => has(s,"pwd") || hasAll(s,["print","working","directory"]), hint: "It's a 3-letter command. Think about what you'd want to PRINT about where you're WORKING.", explain: "<strong>pwd</strong> = Print Working Directory. Shows the full path like <strong>/Users/noat/projects</strong>." },
+      { q: "What command lists all files in the current folder?", best: "ls", desc: "Lists files and folders in the current directory", accept: s => has(s,"ls") || has(s,"list"), hint: "It's a very short command — just 2 letters. What's a short way to say 'list'?", explain: "<strong>ls</strong> = list. Shows all files and folders where you are now." },
+      { q: "How do you go UP one folder level?", best: "cd ..", desc: "Moves up one folder level", accept: s => has(s,"cd") && has(s,".."), hint: "You need two things: the 'go to' command plus a symbol that means 'parent'.", explain: "<strong>cd ..</strong> — <strong>cd</strong> = change directory, <strong>..</strong> = the folder above me." },
+      { q: "How do you go to your home folder from anywhere?", best: "cd ~", desc: "Goes straight to your home folder", accept: s => (has(s,"cd") && has(s,"~")) || s.trim()==="cd", hint: "There's a special wavy symbol that always means 'home'.", explain: "<strong>cd ~</strong> or just <strong>cd</strong> — takes you to /Users/noat from anywhere." },
+      { q: "What does the ~ symbol mean in a path?", best: "Home folder", desc: "Represents your home directory", accept: s => hasAny(s,["home"]), hint: "Think about where you always end up when you feel lost.", explain: "<strong>~</strong> = your home folder. <strong>~/Documents</strong> means <strong>/Users/noat/Documents</strong>." },
+      { q: "How do you enter a folder called 'projects'?", best: "cd projects", desc: "Enters into the 'projects' folder", accept: s => has(s,"cd") && has(s,"project"), hint: "You need the 'change directory' command followed by the folder name.", explain: "<strong>cd projects</strong> — like walking through a door into that room." },
+      { q: "What does '/' at the very start of a path mean?", best: "Root (top of the file system)", desc: "The root — the top of the entire file system", accept: s => hasAny(s,["root","absolute","top","beginning"]), hint: "It's the very highest point — everything else lives below it.", explain: "A <strong>/</strong> at the start = the <strong>root</strong>, the top of your entire file system." },
+      { q: "How do you list files INCLUDING hidden ones?", best: "ls -a", desc: "Lists all files including hidden ones (dotfiles)", accept: s => has(s,"ls") && hasAny(s,["-a","-la","-al","all"]), hint: "Same list command, but with a flag. What letter means 'all'?", explain: "<strong>ls -a</strong> — the <strong>-a</strong> flag means 'all', including hidden files that start with a dot." },
+      { q: "What does 'cd' stand for?", best: "Change Directory", desc: "Stands for Change Directory", accept: s => hasAll(s,["change","directory"]), hint: "Two words. The first means 'switch', the second is another word for 'folder'.", explain: "<strong>cd</strong> = Change Directory. It's how you move between folders." },
+      { q: "What does '.' (single dot) mean in a path?", best: "The current folder", desc: "Represents the current folder you're in", accept: s => hasAny(s,["current","here","this folder","this directory","present"]), hint: "It points to exactly where you are standing right now.", explain: "<strong>.</strong> = the current folder. That's why <strong>open .</strong> opens the current folder in Finder." },
+      { q: "What does '..' (double dot) mean in a path?", best: "The parent folder (one level up)", desc: "Represents the parent folder (one level up)", accept: s => hasAny(s,["parent","up","above","one level"]), hint: "If single dot is 'here', double dot is...", explain: "<strong>..</strong> = the parent folder. <strong>cd ..</strong> goes up, <strong>cd ../photos</strong> goes up then into 'photos'." },
+      { q: "You're in /Users/noat/projects/app. How do you get to /Users/noat/projects?", best: "cd ..", desc: "Go up one folder from 'app' to 'projects'", accept: s => has(s,"cd") && has(s,".."), hint: "You need to go up exactly one level.", explain: "<strong>cd ..</strong> — going up one level from 'app' to 'projects'." },
+      { q: "You're lost deep in folders. Quick way back to your home folder?", best: "cd ~", desc: "Jump back to home folder from anywhere", accept: s => (has(s,"cd") && has(s,"~")) || s.trim()==="cd", hint: "There's a rescue command that always takes you home, no matter where you are.", explain: "<strong>cd ~</strong> or just <strong>cd</strong> — the rescue command when you're lost!" },
+      { q: "What's the difference between 'ls' and 'ls -l'?", best: "ls -l shows details (size, date, permissions)", desc: "ls -l shows detailed file information", accept: s => hasAny(s,["detail","long","size","date","permission","more info","extra"]), hint: "The -l flag makes the output much more informative. L stands for...?", explain: "<strong>ls</strong> shows just names. <strong>ls -l</strong> (long format) adds size, date, owner, permissions." },
+      { q: "How do you go up TWO folder levels at once?", best: "cd ../..", desc: "Moves up two folder levels at once", accept: s => has(s,"cd") && has(s,"../.."), hint: "You can stack the 'parent' symbol with a / separator between them.", explain: "<strong>cd ../..</strong> — chain <strong>..</strong> with <strong>/</strong> to go up multiple levels." },
+      { q: "What does 'ls' stand for?", best: "List", desc: "Stands for List", accept: s => has(s,"list"), hint: "Just one word — what does the command do?", explain: "<strong>ls</strong> = list. It lists the contents of your current folder." },
+      { q: "What does 'pwd' stand for?", best: "Print Working Directory", desc: "Stands for Print Working Directory", accept: s => hasAll(s,["print","working","directory"]), hint: "Three words: P___ W___ D___", explain: "<strong>pwd</strong> = Print Working Directory. 'Working directory' = the folder you're currently in." },
+      { q: "How do you navigate to ~/Documents/work?", best: "cd ~/Documents/work", desc: "Jump directly to a specific folder using full path", accept: s => has(s,"cd") && has(s,"~/Documents/work"), hint: "Combine the 'go to' command with the full path starting from home.", explain: "<strong>cd ~/Documents/work</strong> — jump directly using the full path. ~ starts from home." },
+    ]
+  },
+  files: {
+    title: "Files & Folders",
+    desc: "Create, move, delete",
+    questions: [
+      { q: "Create a new folder called 'myproject'", best: "mkdir myproject", desc: "Creates a new empty folder", accept: s => has(s,"mkdir") && has(s,"myproject"), hint: "The command is short for 'make' + 'directory'. Then add the name.", explain: "<strong>mkdir</strong> = make directory. Creates a new empty folder right where you are." },
+      { q: "Create a new empty file called 'notes.txt'", best: "touch notes.txt", desc: "Creates a new empty file", accept: s => has(s,"touch") && has(s,"notes"), hint: "The command name is something gentle you'd do with a finger.", explain: "<strong>touch notes.txt</strong> — 'touches' a file into existence." },
+      { q: "Rename 'old.txt' to 'new.txt'", best: "mv old.txt new.txt", desc: "Renames a file by moving it to a new name", accept: s => has(s,"mv") && has(s,"old") && has(s,"new"), hint: "In terminal, renaming uses the same command as relocating.", explain: "<strong>mv old.txt new.txt</strong> — <strong>mv</strong> = move. Same folder + new name = rename." },
+      { q: "Copy 'file.txt' into a folder called 'backup'", best: "cp file.txt backup/", desc: "Duplicates a file into another folder", accept: s => has(s,"cp") && has(s,"file") && has(s,"backup"), hint: "Two letters that mean 'duplicate'.", explain: "<strong>cp file.txt backup/</strong> — <strong>cp</strong> = copy. Original stays, duplicate goes to backup." },
+      { q: "Delete a file called 'junk.txt'", best: "rm junk.txt", desc: "Permanently deletes a file", accept: s => has(s,"rm") && has(s,"junk"), hint: "Two letters that mean 'get rid of'. Be careful — no trash can!", explain: "<strong>rm junk.txt</strong> — <strong>rm</strong> = remove. Gone for good, no undo!" },
+      { q: "Delete a folder called 'old' and everything inside it", best: "rm -r old", desc: "Deletes a folder and all its contents recursively", accept: s => has(s,"rm") && has(s,"-r") && has(s,"old"), hint: "Same delete command, but you need a flag to go through all subfolders.", explain: "<strong>rm -r old</strong> — <strong>-r</strong> = recursive (enter every subfolder). Without it, rm won't delete folders." },
+      { q: "See the contents of 'readme.txt' in the terminal", best: "cat readme.txt", desc: "Prints file contents to the screen", accept: s => hasAny(s,["cat","less","more"]) && has(s,"readme"), hint: "Named after an animal. It con-CAT-enates file contents to your screen.", explain: "<strong>cat readme.txt</strong> prints the file. <strong>less readme.txt</strong> lets you scroll." },
+      { q: "Open the current folder in Finder (macOS)", best: "open .", desc: "Opens the current folder in Finder", accept: s => has(s,"open") && has(s,"."), hint: "The macOS launcher command + the symbol that means 'here'.", explain: "<strong>open .</strong> — <strong>open</strong> launches things on macOS, <strong>.</strong> = current folder." },
+      { q: "What does 'mkdir' stand for?", best: "Make Directory", desc: "Stands for Make Directory", accept: s => hasAll(s,["make","directory"]) || hasAll(s,["make","dir"]), hint: "Two words: what it does + another word for 'folder'.", explain: "<strong>mkdir</strong> = Make Directory. Directory is just another word for folder." },
+      { q: "What does 'rm' stand for?", best: "Remove", desc: "Stands for Remove", accept: s => has(s,"remove"), hint: "It's what you do when you want something gone permanently.", explain: "<strong>rm</strong> = Remove. Permanently deletes files. No trash can!" },
+      { q: "What does 'mv' stand for?", best: "Move", desc: "Stands for Move", accept: s => has(s,"move"), hint: "It relocates things from one place to another.", explain: "<strong>mv</strong> = Move. Relocates files, or renames them (same folder, new name)." },
+      { q: "What does 'cp' stand for?", best: "Copy", desc: "Stands for Copy", accept: s => has(s,"copy"), hint: "It makes a duplicate of something.", explain: "<strong>cp</strong> = Copy. Makes a duplicate, original stays untouched." },
+      { q: "Move 'photo.jpg' into ~/Pictures", best: "mv photo.jpg ~/Pictures/", desc: "Moves a file to a different folder", accept: s => has(s,"mv") && has(s,"photo") && has(s,"picture"), hint: "Same command you use for renaming, but the destination is a folder.", explain: "<strong>mv photo.jpg ~/Pictures/</strong> — the file disappears from here and appears there." },
+      { q: "Create a folder AND subfolder at once: 'projects/app'", best: "mkdir -p projects/app", desc: "Creates nested folders in one command", accept: s => has(s,"mkdir") && has(s,"-p"), hint: "There's a flag that creates parent folders if they don't exist yet.", explain: "<strong>mkdir -p projects/app</strong> — <strong>-p</strong> creates parent directories as needed." },
+      { q: "Copy an ENTIRE folder called 'src' into 'backup'", best: "cp -r src backup/", desc: "Copies a folder and all its contents", accept: s => has(s,"cp") && has(s,"-r") && has(s,"src"), hint: "Same flag you need with rm to handle folders — it means 'go inside everything'.", explain: "<strong>cp -r src backup/</strong> — just like rm, you need <strong>-r</strong> (recursive) to copy entire folders." },
+      { q: "How do you see how big a folder is?", best: "du -sh foldername", desc: "Shows disk usage of a folder", accept: s => has(s,"du"), hint: "The command abbreviation means 'Disk Usage'.", explain: "<strong>du -sh foldername</strong> — <strong>du</strong> = disk usage. <strong>-s</strong> = summary, <strong>-h</strong> = human-readable (MB, GB)." },
+      { q: "Open a file called 'design.pdf' with its default app", best: "open design.pdf", desc: "Opens a file with its default application", accept: s => has(s,"open") && has(s,"design"), hint: "Same command you used for Finder, but point it at a file instead.", explain: "<strong>open design.pdf</strong> — opens with the default app (Preview for PDFs, etc.)." },
+    ]
+  },
+  git: {
+    title: "Git Essentials",
+    desc: "Save & share your work",
+    questions: [
+      { q: "Check the current status of your git project", best: "git status", desc: "Shows what's changed, staged, and which branch you're on", accept: s => has(s,"git") && has(s,"status"), hint: "The most natural word for 'what's happening right now'.", explain: "<strong>git status</strong> — your project's dashboard. Run it often!" },
+      { q: "Stage ALL changed files for a commit", best: "git add .", desc: "Prepares all changed files for the next commit", accept: s => has(s,"git") && has(s,"add") && hasAny(s,[".","-a","-A","all"]), hint: "You're ADDing files to the staging area. Use a symbol that means 'everything here'.", explain: "<strong>git add .</strong> — stages everything. Like packing items into a box before shipping." },
+      { q: "Commit with the message 'first version'", best: "git commit -m 'first version'", desc: "Saves a snapshot of staged changes with a message", accept: s => has(s,"git") && has(s,"commit") && has(s,"-m"), hint: "You need the commit command plus a flag that lets you attach a short note.", explain: "<strong>git commit -m 'first version'</strong> — saves a snapshot. <strong>-m</strong> = message." },
+      { q: "Push your commits to GitHub", best: "git push", desc: "Sends your local commits to the remote repository", accept: s => has(s,"git") && has(s,"push"), hint: "You're sending your work UP to the cloud.", explain: "<strong>git push</strong> — sends your commits to GitHub. Sharing your work with the world." },
+      { q: "Pull the latest changes from GitHub", best: "git pull", desc: "Downloads the latest changes from the remote repository", accept: s => has(s,"git") && has(s,"pull"), hint: "The opposite of sending code up.", explain: "<strong>git pull</strong> — downloads latest changes. Always do this before starting work." },
+      { q: "See the history of commits", best: "git log", desc: "Shows the timeline of all commits", accept: s => has(s,"git") && has(s,"log"), hint: "Think of a book that records everything that happened in order.", explain: "<strong>git log</strong> — timeline of all commits: who, when, and the message." },
+      { q: "Create AND switch to a new branch called 'feature'", best: "git checkout -b feature", desc: "Creates a new branch and switches to it", accept: s => has(s,"git") && hasAny(s,["checkout -b","switch -c"]) && has(s,"feature"), hint: "You need a flag that means 'create new' along with the branch command.", explain: "<strong>git checkout -b feature</strong> — creates AND switches. A branch = separate copy for experiments." },
+      { q: "Switch to a branch called 'main'", best: "git checkout main", desc: "Switches to an existing branch", accept: s => has(s,"git") && hasAny(s,["checkout","switch"]) && has(s,"main"), hint: "Same navigation command, just without the 'create' flag.", explain: "<strong>git checkout main</strong> — moves to the 'main' branch." },
+      { q: "Start a new git project in the current folder", best: "git init", desc: "Initializes a new git repository", accept: s => has(s,"git") && has(s,"init"), hint: "Short for 'initialize' — starting something from scratch.", explain: "<strong>git init</strong> — creates a new git project. Makes a hidden .git folder to track changes." },
+      { q: "Stage just ONE file called 'index.html' for a commit", best: "git add index.html", desc: "Stages a specific file for the next commit", accept: s => has(s,"git") && has(s,"add") && has(s,"index"), hint: "Same staging command, but name the file instead of using the 'everything' symbol.", explain: "<strong>git add index.html</strong> — you can pick exactly which files to include." },
+      { q: "See what lines changed since your last commit", best: "git diff", desc: "Shows line-by-line changes in your files", accept: s => has(s,"git") && has(s,"diff"), hint: "Short for 'difference' — what's different now vs. before.", explain: "<strong>git diff</strong> — green (+) = added, red (-) = removed. Review before committing!" },
+      { q: "What are the 3 steps to save and share your work? (in order)", best: "git add, git commit, git push", desc: "The standard workflow: stage, commit, push", accept: s => has(s,"add") && has(s,"commit") && has(s,"push"), hint: "Pack the box, seal & label it, ship it.", explain: "<strong>add → commit → push</strong>. Pack (add), seal & label (commit), ship (push)." },
+      { q: "Download a project from GitHub for the first time", best: "git clone [URL]", desc: "Downloads an entire repository from GitHub", accept: s => has(s,"git") && has(s,"clone"), hint: "You're making an identical copy — what's another word for that?", explain: "<strong>git clone URL</strong> — downloads the entire project. Only done once; after that use git pull." },
+      { q: "What branch are you currently on?", best: "git branch", desc: "Lists all branches, marks the current one", accept: s => has(s,"git") && hasAny(s,["branch","status"]), hint: "There's a command that lists all branches with a star next to yours.", explain: "<strong>git branch</strong> — lists all branches, * marks the current one. git status also shows it." },
+      { q: "Merge changes from 'feature' into your current branch", best: "git merge feature", desc: "Combines another branch into the current one", accept: s => has(s,"git") && has(s,"merge") && has(s,"feature"), hint: "You're combining two things together. What's the word for that?", explain: "<strong>git merge feature</strong> — takes all changes from 'feature' and combines them into your current branch." },
+      { q: "Push a branch for the first time and connect it to GitHub", best: "git push -u origin branchname", desc: "Pushes and links a local branch to the remote", accept: s => has(s,"git") && has(s,"push") && hasAny(s,["-u","origin","upstream"]), hint: "First time needs an extra flag to set up the connection.", explain: "<strong>git push -u origin branchname</strong> — <strong>-u</strong> links local to remote. After this, just <strong>git push</strong> works." },
+      { q: "Should you pull or push first when starting work?", best: "Pull first", desc: "Always pull before pushing to get latest changes", accept: s => has(s,"pull"), hint: "You want the freshest version before you add your own changes.", explain: "Always <strong>pull first</strong>! Get the latest changes, then work, then push." },
+      { q: "Undo changes to 'style.css' (go back to last commit version)", best: "git checkout style.css", desc: "Restores a file to its last committed version", accept: s => has(s,"git") && hasAny(s,["checkout","restore"]) && has(s,"style"), hint: "Same command you use to switch branches, but pointed at a file.", explain: "<strong>git checkout style.css</strong> or <strong>git restore style.css</strong> — replaces with last committed version. Changes are lost!" },
+      { q: "You forgot to include a file in your last commit. First step?", best: "git status", desc: "Check status to see what was missed", accept: s => has(s,"git") && has(s,"status"), hint: "When something feels wrong, check your dashboard first.", explain: "<strong>git status</strong> — always your first step. The forgotten file will show as untracked or modified." },
+    ]
+  },
+  claude: {
+    title: "Claude Code",
+    desc: "Slash commands & shortcuts",
+    questions: [
+      { q: "Run 'ls' directly as a shell command inside Claude Code", best: "! ls", desc: "Runs a terminal command directly from Claude Code", accept: s => s.trim().replace(/\s+/g,"")==="!ls" || s.trim()==="! ls", hint: "There's a punctuation mark that means 'run this in the terminal, not as a question'.", explain: "<strong>! ls</strong> — the <strong>!</strong> prefix runs real terminal commands directly." },
+      { q: "Clear the conversation and start fresh", best: "/clear", desc: "Wipes the conversation to start over", accept: s => hasAny(s,["/clear","/reset","/new"]), hint: "Starts with / — what word means 'wipe clean'?", explain: "<strong>/clear</strong> — start fresh. <strong>/reset</strong> and <strong>/new</strong> also work." },
+      { q: "See all available commands in Claude Code", best: "/help", desc: "Shows all available slash commands", accept: s => has(s,"/help"), hint: "/ plus the word everyone uses when they're stuck.", explain: "<strong>/help</strong> — your lifeline when you forget everything else!" },
+      { q: "Reference a file in your prompt using autocomplete", best: "@", desc: "Triggers file autocomplete in your message", accept: s => has(s,"@"), hint: "Like tagging someone on social media, but for files.", explain: "<strong>@</strong> — type it followed by a filename. Like @mentioning a person, but for files." },
+      { q: "Cancel what Claude is currently doing", best: "Ctrl+C", desc: "Stops Claude's current generation", accept: s => hasAll(s,["ctrl","c"]) || hasAll(s,["control","c"]), hint: "Hold a modifier key plus the first letter of 'cancel'.", explain: "<strong>Ctrl+C</strong> — the universal stop button. Works everywhere in the terminal." },
+      { q: "Resume your last conversation", best: "/resume", desc: "Picks up where the last conversation left off", accept: s => hasAny(s,["/resume","/continue"]), hint: "/ plus a word meaning 'pick up where I left off'.", explain: "<strong>/resume</strong> or <strong>/continue</strong> — your history is saved between sessions." },
+      { q: "Review the changes Claude made to your files", best: "/diff", desc: "Shows before/after of all file changes", accept: s => has(s,"/diff") || has(s,"diff"), hint: "Short for 'difference' — what's changed?", explain: "<strong>/diff</strong> — green = added, red = removed. Always review before accepting!" },
+      { q: "Change Claude Code settings (theme, model, etc.)", best: "/config", desc: "Opens the settings panel", accept: s => hasAny(s,["/config","/settings"]), hint: "/ plus a word for 'settings' or 'configuration'.", explain: "<strong>/config</strong> or <strong>/settings</strong> — change theme, model, preferences." },
+      { q: "Enter plan mode (Claude plans without changing files)", best: "/plan", desc: "Switches to plan-only mode", accept: s => hasAny(s,["/plan","shift+tab","shift tab"]), hint: "/ plus what you do BEFORE you act.", explain: "<strong>/plan</strong> or <strong>Shift+Tab</strong> — Claude discusses but doesn't edit files." },
+      { q: "Exit Claude Code", best: "Ctrl+D", desc: "Exits the Claude Code session", accept: s => hasAll(s,["ctrl","d"]) || hasAll(s,["control","d"]), hint: "Hold a modifier key plus a letter. D for...?", explain: "<strong>Ctrl+D</strong> — exits Claude Code. Standard way to exit many terminal programs." },
+      { q: "Copy Claude's last response to clipboard", best: "/copy", desc: "Copies the last response to your clipboard", accept: s => has(s,"/copy"), hint: "/ plus the most obvious word for putting something on your clipboard.", explain: "<strong>/copy</strong> — copies Claude's last response so you can paste anywhere." },
+      { q: "What does the ! prefix do in Claude Code?", best: "Runs a shell/terminal command directly", desc: "Executes a real terminal command", accept: s => hasAny(s,["shell","terminal","command","bash","run","execute"]), hint: "It bypasses Claude and talks straight to your computer.", explain: "The <strong>!</strong> prefix runs real terminal commands. Claude doesn't interpret it." },
+      { q: "What does the / prefix do in Claude Code?", best: "Opens the slash command menu", desc: "Accesses built-in Claude Code commands", accept: s => hasAny(s,["slash","command","menu"]), hint: "It opens a menu of built-in features and actions.", explain: "<strong>/</strong> opens the slash command menu — built-in actions like /clear, /help, /diff." },
+      { q: "Claude is writing a response you don't need. How do you stop it?", best: "Ctrl+C", desc: "Cancels Claude's current output", accept: s => hasAll(s,["ctrl","c"]) || hasAll(s,["control","c"]) || has(s,"escape"), hint: "The same shortcut you'd use to stop any process.", explain: "<strong>Ctrl+C</strong> — stops Claude mid-sentence. You won't lose the conversation." },
+      { q: "Check how much context/memory Claude has left", best: "/context", desc: "Shows context window usage", accept: s => has(s,"/context"), hint: "/ plus the word for Claude's available memory/space.", explain: "<strong>/context</strong> — shows how full Claude's memory is. Use /clear if it's getting full." },
+      { q: "See how much this session has cost", best: "/cost", desc: "Shows token usage and cost for the session", accept: s => hasAny(s,["/cost","/usage"]), hint: "/ plus the money word.", explain: "<strong>/cost</strong> — shows tokens used and cost. <strong>/usage</strong> shows overall plan limits." },
+      { q: "Toggle verbose mode to see what Claude is doing step by step", best: "Ctrl+O", desc: "Toggles detailed output of Claude's actions", accept: s => hasAll(s,["ctrl","o"]) || hasAll(s,["control","o"]), hint: "Hold a modifier key plus a letter. O for Output.", explain: "<strong>Ctrl+O</strong> — shows details of every tool Claude uses. Great for learning!" },
+      { q: "Write a multi-line message without sending", best: "Shift+Enter", desc: "Adds a new line without sending the message", accept: s => hasAny(s,["shift+enter","shift enter","option+enter","option enter","\\","backslash"]), hint: "Hold a modifier key while pressing the send key.", explain: "<strong>Shift+Enter</strong> (or <strong>\\</strong> then Enter) adds a new line without sending." },
+      { q: "Save/export this conversation as a text file", best: "/export", desc: "Saves the conversation as a plain text file", accept: s => has(s,"/export"), hint: "/ plus the word for sending something out or saving it.", explain: "<strong>/export</strong> — saves the entire conversation as a text file." },
+      { q: "Switch between different AI models in Claude Code", best: "/model", desc: "Lets you choose a different AI model", accept: s => hasAny(s,["/model","/config"]), hint: "/ plus the word for what you want to change.", explain: "<strong>/model</strong> — pick Sonnet for speed or Opus for complex tasks." },
+    ]
+  },
+  errors: {
+    title: "What Went Wrong?",
+    desc: "Reading errors & fixing them",
+    questions: [
+      { q: "You see: 'command not found'. What does it mean?", best: "The command is misspelled or not installed", desc: "Means the terminal doesn't recognize the command", accept: s => hasAny(s,["not exist","doesn't exist","misspell","typo","wrong name","not installed","don't have"]), hint: "The computer looked for that word and came up empty. Why might that happen?", explain: "Usually a typo (<strong>gti</strong> vs <strong>git</strong>) or the program isn't installed. Check spelling first!" },
+      { q: "You see: 'No such file or directory'. What does it mean?", best: "The file/folder doesn't exist at that path", desc: "Means the path you gave doesn't lead anywhere", accept: s => hasAny(s,["doesn't exist","doesnt exist","not exist","wrong path","wrong name","can't find","not there","missing","wrong folder"]), hint: "The thing you're pointing to isn't where you think it is.", explain: "The path is wrong. Run <strong>ls</strong> to see what's actually here, <strong>pwd</strong> to check where you are." },
+      { q: "You see: 'Permission denied'. What does it mean?", best: "You don't have permission to access that", desc: "Means you're not authorized to do that action", accept: s => hasAny(s,["permission","not allowed","can't access","no access","restricted","not authorized"]), hint: "The system has a lock on it and you don't have the key.", explain: "<strong>Permission denied</strong> — you need higher privileges. Sometimes <strong>sudo</strong> helps, but use it carefully!" },
+      { q: "What word before a command runs it as admin?", best: "sudo", desc: "Runs commands with administrator privileges", accept: s => has(s,"sudo"), hint: "Stands for 'Super User Do'.", explain: "<strong>sudo</strong> = Super User Do. It asks for your password. Use carefully — it can change system files!" },
+      { q: "You typed 'git puhs' and got 'not a git command'. What went wrong?", best: "Typo — should be 'git push'", desc: "A spelling mistake in the command", accept: s => hasAny(s,["typo","spelling","misspell","wrong","push","spelled"]), hint: "Read what you typed very carefully, letter by letter.", explain: "Typo! <strong>puhs</strong> → <strong>push</strong>. Git suggests similar commands when this happens." },
+      { q: "You get 'fatal: not a git repository'. What does it mean?", best: "You're not inside a git project folder", desc: "Means the current folder isn't tracked by git", accept: s => hasAny(s,["not in","not inside","no git","wrong folder","not a git","no repo","haven't init","not initialized"]), hint: "Git is looking for something in this folder and can't find it.", explain: "You're not in a git project. <strong>cd</strong> to the right folder, or <strong>git init</strong> to start one." },
+      { q: "What does 'merge conflict' mean in simple terms?", best: "Two changes clash on the same lines — git can't choose", desc: "Two versions changed the same code and git can't auto-merge", accept: s => hasAny(s,["two","both","same","conflict","changed","different","clash","overlap","decide","choose"]), hint: "Imagine two people editing the same sentence differently.", explain: "Two branches changed the same lines differently. Git asks you to choose which to keep." },
+      { q: "The terminal shows ':' at the bottom and won't let you type. How do you exit?", best: "Press q", desc: "You're stuck in a pager — press q to quit", accept: s => hasAny(s,["q","quit","press q"]), hint: "Just one letter — the first letter of 'quit'.", explain: "You're in a <strong>pager</strong> (viewer for long output). Press <strong>q</strong> to quit. Trips up everyone!" },
+      { q: "Terminal seems frozen. What should you try first?", best: "Ctrl+C", desc: "Cancel the running process with Ctrl+C", accept: s => hasAll(s,["ctrl","c"]) || hasAll(s,["control","c"]) || has(s,"cancel"), hint: "The universal 'make it stop' shortcut.", explain: "<strong>Ctrl+C</strong> cancels whatever is running. If that fails, try <strong>Ctrl+D</strong>, or close the terminal." },
+      { q: "Ctrl+C didn't unfreeze the terminal. What next?", best: "Ctrl+D or close the terminal window", desc: "Send end-of-input signal or restart the terminal", accept: s => hasAll(s,["ctrl","d"]) || hasAll(s,["control","d"]) || hasAny(s,["close","quit","new tab","reopen"]), hint: "Try another Ctrl shortcut, or the brute force approach.", explain: "<strong>Ctrl+D</strong> sends 'end of input'. If even that fails, close and reopen the terminal. No shame!" },
+      { q: "You get 'error: failed to push some refs'. What usually fixes it?", best: "git pull first, then push again", desc: "Pull remote changes first, then retry the push", accept: s => has(s,"pull"), hint: "Someone else sent their work up before you did.", explain: "GitHub has changes you don't have. <strong>git pull</strong> first, then <strong>git push</strong> again." },
+      { q: "After 'No such file or directory', what's the first thing to check?", best: "Run ls to see what files are actually here", desc: "List the files to see what actually exists", accept: s => hasAny(s,["ls","pwd","list"]), hint: "Look around to see what's actually in front of you.", explain: "Run <strong>ls</strong> to see what exists, <strong>pwd</strong> to confirm you're in the right place." },
+      { q: "You see 'xcrun: error: invalid active developer path'. What do you need?", best: "Xcode Command Line Tools", desc: "macOS needs Xcode Command Line Tools installed", accept: s => hasAny(s,["xcode","command line tools","developer tools"]), hint: "Apple's developer toolkit for macOS — often needed after updates.", explain: "Run <strong>xcode-select --install</strong>. This gives you git and other basic developer tools." },
+      { q: "A command is taking forever. How do you cancel it?", best: "Ctrl+C", desc: "Cancels a long-running command", accept: s => hasAll(s,["ctrl","c"]) || hasAll(s,["control","c"]), hint: "The same shortcut as 'stop' in any terminal context.", explain: "<strong>Ctrl+C</strong> — stops the command immediately. Your files are safe." },
+      { q: "You see 'EACCES' when installing something. What type of error is it?", best: "Permission error", desc: "A permission/access error in code form", accept: s => hasAny(s,["permission","access","not allowed","admin","sudo"]), hint: "It's a coded version of a very common error you've seen before.", explain: "<strong>EACCES</strong> = permission error in code form. Same as 'Permission denied'." },
+    ]
+  },
+  speed: {
+    title: "Speed Tricks",
+    desc: "Keyboard shortcuts & efficiency",
+    questions: [
+      { q: "How do you autocomplete a filename without typing it all?", best: "Press Tab", desc: "Autocompletes file and folder names", accept: s => has(s,"tab"), hint: "A wide key on the left side of your keyboard.", explain: "<strong>Tab</strong> = autocomplete. Start typing, press Tab — terminal fills the rest. The #1 speed trick!" },
+      { q: "How do you repeat the last command you ran?", best: "Press Up arrow", desc: "Scrolls back through command history", accept: s => hasAny(s,["up arrow","up key","arrow up","up","↑"]), hint: "One of the four arrow keys — which direction is 'go back in time'?", explain: "<strong>Up arrow</strong> — scrolls through history. Press multiple times to go further back." },
+      { q: "Jump cursor to the BEGINNING of the line?", best: "Ctrl+A", desc: "Moves cursor to the start of the line", accept: s => hasAll(s,["ctrl","a"]) || hasAll(s,["control","a"]) || has(s,"home"), hint: "Modifier key + a letter. A is the first letter of the alphabet...", explain: "<strong>Ctrl+A</strong> — A = start of Alphabet = start of line." },
+      { q: "Jump cursor to the END of the line?", best: "Ctrl+E", desc: "Moves cursor to the end of the line", accept: s => hasAll(s,["ctrl","e"]) || hasAll(s,["control","e"]) || has(s,"end"), hint: "Modifier key + a letter that stands for 'End'.", explain: "<strong>Ctrl+E</strong> — E = End of line." },
+      { q: "Clear the terminal screen?", best: "Ctrl+L or clear", desc: "Clears the screen without losing history", accept: s => (hasAll(s,["ctrl","l"]) || hasAll(s,["control","l"]) || has(s,"clear")), hint: "Modifier + L, or type a word that means 'clean up'.", explain: "<strong>Ctrl+L</strong> or type <strong>clear</strong> — cleans the view. History isn't lost." },
+      { q: "Delete everything from cursor to END of line?", best: "Ctrl+K", desc: "Kills text from cursor to end of line", accept: s => hasAll(s,["ctrl","k"]) || hasAll(s,["control","k"]), hint: "Modifier + K. K for Kill (cut away).", explain: "<strong>Ctrl+K</strong> — 'kills' everything after your cursor. Great for changing the end of a command." },
+      { q: "Delete everything from cursor to BEGINNING of line?", best: "Ctrl+U", desc: "Deletes text from cursor back to line start", accept: s => hasAll(s,["ctrl","u"]) || hasAll(s,["control","u"]), hint: "Modifier + U. Better than holding backspace forever!", explain: "<strong>Ctrl+U</strong> — wipes everything before cursor. Instant do-over for a command." },
+      { q: "Search through your command history for something you typed before?", best: "Ctrl+R", desc: "Reverse-searches through command history", accept: s => hasAll(s,["ctrl","r"]) || hasAll(s,["control","r"]), hint: "Modifier + R. R for Reverse search.", explain: "<strong>Ctrl+R</strong> — type any part of a previous command and it finds it. Press Ctrl+R again for more matches." },
+      { q: "Move cursor one WORD to the left?", best: "Alt+B (Option+B on Mac)", desc: "Jumps back one word", accept: s => (hasAny(s,["alt","option"]) && has(s,"b")) || has(s,"alt+b") || has(s,"option+b"), hint: "A modifier key + B for Back. Faster than arrow keys!", explain: "<strong>Alt+B</strong> (Option+B on Mac) — moves back one word. <strong>Alt+F</strong> moves forward one word." },
+      { q: "Paste text you deleted with Ctrl+K or Ctrl+U?", best: "Ctrl+Y", desc: "Yanks back (pastes) previously deleted text", accept: s => hasAll(s,["ctrl","y"]) || hasAll(s,["control","y"]), hint: "Modifier + Y. Y for Yank (pull back).", explain: "<strong>Ctrl+Y</strong> — 'yanks' back deleted text. Terminal has its own mini clipboard!" },
+      { q: "Run two commands in sequence in one line?", best: "command1 && command2", desc: "Chains commands — second runs only if first succeeds", accept: s => has(s,"&&") || (has(s,"and") && !has(s,"command")), hint: "A double symbol you put between the two commands.", explain: "<strong>&&</strong> chains commands: <strong>git add . && git commit -m 'update'</strong>. Second runs only if first succeeds." },
+      { q: "Re-run the very last command?", best: "Up arrow + Enter, or !!", desc: "Repeats the most recent command", accept: s => hasAny(s,["up","!!","arrow"]), hint: "Either an arrow key, or a double punctuation mark.", explain: "<strong>Up + Enter</strong> or <strong>!!</strong> (bang bang). Pro tip: <strong>sudo !!</strong> re-runs the last command as admin." },
+      { q: "Tab gave you multiple options. How do you see them all?", best: "Press Tab again (double Tab)", desc: "Shows all autocomplete possibilities", accept: s => hasAny(s,["tab again","tab twice","double tab","tab tab","two tab","press tab"]), hint: "Just press the same key one more time.", explain: "<strong>Tab twice</strong> — shows all matches. Type more characters to narrow down, then Tab again." },
+      { q: "Open a new terminal tab (macOS)", best: "Cmd+T", desc: "Opens a new terminal tab", accept: s => hasAny(s,["cmd+t","cmd t","command+t","command t"]), hint: "Same shortcut as opening a new tab in your browser.", explain: "<strong>Cmd+T</strong> — new tab, just like in a browser. Each tab starts in your home folder." },
+      { q: "What does the Up arrow do in the terminal?", best: "Shows previous commands from history", desc: "Cycles through previously typed commands", accept: s => hasAny(s,["previous","last","history","before","earlier","past","repeat"]), hint: "It goes backwards through everything you've typed.", explain: "<strong>Up arrow</strong> cycles through command history. Most experienced users use this constantly." },
+      { q: "Tab does nothing when you press it. Why?", best: "No match, or too many matches — type more characters", desc: "No unique match found for autocomplete", accept: s => hasAny(s,["no match","too many","type more","more characters","more letter","multiple","nothing match","ambiguous"]), hint: "The terminal needs more information to narrow it down.", explain: "Either nothing matches or too many things do. Type a few more characters and Tab again." },
+    ]
+  }
+};
+
+// ─── Helpers ───
+
+function norm(s) { return s.toLowerCase().replace(/['"]/g,"").replace(/\s+/g," ").trim(); }
+function has(input, word) { return norm(input).includes(norm(word)); }
+function hasAny(input, words) { return words.some(w => has(input, w)); }
+function hasAll(input, words) { return words.every(w => has(input, w)); }
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// ─── Format generators ───
+// Each returns { type, render(container), check? }
+// Formats: "type", "choice", "tf", "reverse"
+
+function getAllQuestions() {
+  let all = [];
+  Object.entries(DRILLS).forEach(([cat, d]) => {
+    d.questions.forEach((q, i) => all.push({ ...q, id: cat+"_"+i, cat }));
+  });
+  return all;
+}
+
+function getDistractors(item, count) {
+  const all = getAllQuestions().filter(q => q.id !== item.id && q.best !== item.best);
+  return shuffle(all).slice(0, count).map(q => q.best);
+}
+
+function getDescDistractors(item, count) {
+  const all = getAllQuestions().filter(q => q.id !== item.id && q.desc !== item.desc);
+  return shuffle(all).slice(0, count).map(q => q.desc);
+}
+
+function pickFormat(item) {
+  // Weighted random: type 30%, choice 30%, tf 20%, reverse 20%
+  const r = Math.random();
+  if (r < 0.30) return "type";
+  if (r < 0.60) return "choice";
+  if (r < 0.80) return "tf";
+  return "reverse";
+}
+
+// ─── State ───
+
+let state = {};
+const body = document.getElementById("body");
+const scorebar = document.getElementById("scorebar");
+function render(html) { body.innerHTML = html; }
+function scrollBottom() { body.scrollTop = body.scrollHeight; }
+
+// ─── Menu ───
+
+function showMenu() {
+  state = {
+    queue: [], current: 0, answered: 0, firstTryCorrect: 0,
+    streak: 0, bestStreak: 0, history: [], wrongMap: new Map(),
+    originalCount: 0, waitingForUser: false
+  };
+  scorebar.style.display = "none";
+
+  let html = `
+    <div class="line bold heading">Terminal & Claude Code Drills</div>
+    <div class="line dim">4 question types — multiple choice, true/false, type it, and reverse.</div>
+    <div class="line dim">Shuffled every time. Wrong answers come back until you nail them.</div>
+    <div class="line" style="margin-top:16px; color:#8b949e;">Pick a category:</div>
+    <div class="categories">
+  `;
+
+  const cats = Object.keys(DRILLS);
+  cats.forEach((key, i) => {
+    const d = DRILLS[key];
+    html += `
+      <button class="cat-btn" onclick="startDrill('${key}')">
+        <span class="cat-num">${i + 1}</span>${d.title}
+        <span class="cat-desc">${d.desc} — ${d.questions.length} questions</span>
+      </button>`;
+  });
+
+  html += `
+      <button class="cat-btn" onclick="startMixed()" style="grid-column: 1 / -1;">
+        <span class="cat-num">${cats.length + 1}</span>Mixed Drill
+        <span class="cat-desc">Random from all categories — 15 questions</span>
+      </button>
+    </div>`;
+
+  render(html);
+}
+
+function startDrill(cat) {
+  const questions = shuffle(DRILLS[cat].questions.map((q, i) => ({ ...q, id: cat+"_"+i, cat })));
+  initDrill(questions);
+}
+
+function startMixed() {
+  const all = getAllQuestions();
+  initDrill(shuffle(all).slice(0, 15));
+}
+
+function initDrill(questions) {
+  // Assign a random format to each question
+  state.queue = questions.map(q => ({ ...q, format: pickFormat(q), isRetry: false }));
+  state.originalCount = questions.length;
+  state.current = 0;
+  state.answered = 0;
+  state.firstTryCorrect = 0;
+  state.streak = 0;
+  state.bestStreak = 0;
+  state.history = [];
+  state.wrongMap = new Map();
+  state.waitingForUser = false;
+  showQuestion();
+}
+
+// ─── Render question by format ───
+
+function showQuestion() {
+  if (state.waitingForUser) return;
+  const item = state.queue[state.current];
+  const remaining = state.queue.length - state.current;
+
+  scorebar.style.display = "flex";
+  document.getElementById("scoreNum").textContent = `${state.firstTryCorrect}/${state.answered}`;
+  document.getElementById("streakText").textContent = state.streak > 1 ? `Streak: ${state.streak}` : "";
+  updatePips();
+
+  const retryLabel = item.isRetry ? `<span class="retry-badge">RETRY</span>` : "";
+  const formatLabels = { type: "TYPE IT", choice: "PICK ONE", tf: "TRUE / FALSE", reverse: "WHAT DOES IT DO?" };
+  const formatClasses = { type: "type", choice: "choice", tf: "tf", reverse: "reverse" };
+
+  let html = `
+    <div class="line dim">
+      Question ${state.history.length + 1}${retryLabel}
+      <span class="format-tag ${formatClasses[item.format]}">${formatLabels[item.format]}</span>
+    </div>
+  `;
+
+  if (item.format === "type") {
+    html += renderType(item);
+  } else if (item.format === "choice") {
+    html += renderChoice(item);
+  } else if (item.format === "tf") {
+    html += renderTF(item);
+  } else if (item.format === "reverse") {
+    html += renderReverse(item);
+  }
+
+  render(html);
+
+  // Focus input if type format
+  const input = document.getElementById("input");
+  if (input) {
+    input.focus();
+    input.addEventListener("keydown", e => { if (e.key === "Enter") submitType(); });
+  }
+
+  scrollBottom();
+}
+
+// ── TYPE IT ──
+function renderType(item) {
+  return `
+    <div class="line heading" style="margin:8px 0 12px">${item.q}</div>
+    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    <div id="feedback-area"></div>
+    <div class="input-row">
+      <span class="prompt-symbol">$</span>
+      <input type="text" id="input" placeholder="type your answer..." autocomplete="off" autofocus spellcheck="false">
+    </div>
+    <div id="action-area"></div>
+  `;
+}
+
+function submitType() {
+  const input = document.getElementById("input");
+  if (!input || input.disabled) return;
+  const val = input.value.trim();
+  if (!val) return;
+  input.disabled = true;
+  input.style.opacity = 0.5;
+
+  const item = state.queue[state.current];
+  const correct = item.accept(val);
+  handleResult(correct, item);
+}
+
+// ── MULTIPLE CHOICE ──
+function renderChoice(item) {
+  const distractors = getDistractors(item, 3);
+  const options = shuffle([item.best, ...distractors]);
+  state._choiceAnswer = item.best;
+  state._choiceOptions = options;
+
+  const keys = ["A","B","C","D"];
+  let choicesHtml = `<div class="choices" id="choices">`;
+  options.forEach((opt, i) => {
+    choicesHtml += `
+      <button class="choice-btn" data-idx="${i}" onclick="submitChoice(${i})">
+        <span class="choice-key">${keys[i]}</span>${opt}
+      </button>`;
+  });
+  choicesHtml += `</div>`;
+
+  return `
+    <div class="line heading" style="margin:8px 0 12px">${item.q}</div>
+    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    ${choicesHtml}
+    <div id="feedback-area"></div>
+    <div id="action-area"></div>
+  `;
+}
+
+function submitChoice(idx) {
+  const btns = document.querySelectorAll(".choice-btn");
+  if (btns[0].classList.contains("correct") || btns[0].classList.contains("wrong") || btns[0].classList.contains("reveal")) return;
+
+  const item = state.queue[state.current];
+  const picked = state._choiceOptions[idx];
+  const correct = picked === state._choiceAnswer;
+
+  btns.forEach((btn, i) => {
+    btn.style.pointerEvents = "none";
+    if (i === idx) btn.classList.add(correct ? "correct" : "wrong");
+    if (!correct && state._choiceOptions[i] === state._choiceAnswer) btn.classList.add("reveal");
+  });
+
+  handleResult(correct, item);
+}
+
+// ── TRUE / FALSE ──
+function renderTF(item) {
+  // 50% true (correct pairing), 50% false (swapped description)
+  const isTrue = Math.random() < 0.5;
+  let shownDesc;
+  if (isTrue) {
+    shownDesc = item.desc;
+  } else {
+    const others = getAllQuestions().filter(q => q.id !== item.id && q.desc !== item.desc);
+    shownDesc = pick(others).desc;
+  }
+  state._tfCorrectAnswer = isTrue;
+
+  return `
+    <div class="line heading" style="margin:8px 0 8px">Is this statement correct?</div>
+    <div class="tf-statement">
+      <span class="tf-cmd">${item.best}</span>
+      <span class="tf-arrow">→</span>
+      ${shownDesc}
+    </div>
+    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    <div class="tf-buttons" id="tf-buttons">
+      <button class="tf-btn true-btn" onclick="submitTF(true)">TRUE</button>
+      <button class="tf-btn false-btn" onclick="submitTF(false)">FALSE</button>
+    </div>
+    <div id="feedback-area"></div>
+    <div id="action-area"></div>
+  `;
+}
+
+function submitTF(answer) {
+  const btns = document.querySelectorAll(".tf-btn");
+  if (btns[0].classList.contains("dimmed") || btns[1].classList.contains("dimmed")) return;
+
+  const item = state.queue[state.current];
+  const correct = answer === state._tfCorrectAnswer;
+
+  btns.forEach(btn => {
+    btn.style.pointerEvents = "none";
+    if ((btn.classList.contains("true-btn") && answer === true) ||
+        (btn.classList.contains("false-btn") && answer === false)) {
+      btn.classList.add("selected");
+    } else {
+      btn.classList.add("dimmed");
+    }
+  });
+
+  handleResult(correct, item);
+}
+
+// ── REVERSE (what does this command do?) ──
+function renderReverse(item) {
+  const distractors = getDescDistractors(item, 3);
+  const options = shuffle([item.desc, ...distractors]);
+  state._reverseAnswer = item.desc;
+  state._reverseOptions = options;
+
+  const keys = ["A","B","C","D"];
+  let choicesHtml = `<div class="choices" id="choices">`;
+  options.forEach((opt, i) => {
+    choicesHtml += `
+      <button class="choice-btn" data-idx="${i}" onclick="submitReverse(${i})">
+        <span class="choice-key">${keys[i]}</span>${opt}
+      </button>`;
+  });
+  choicesHtml += `</div>`;
+
+  return `
+    <div class="line heading" style="margin:8px 0 8px">What does this command do?</div>
+    <div class="reverse-cmd"><code>${item.best}</code></div>
+    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    ${choicesHtml}
+    <div id="feedback-area"></div>
+    <div id="action-area"></div>
+  `;
+}
+
+function submitReverse(idx) {
+  const btns = document.querySelectorAll(".choice-btn");
+  if (btns[0].classList.contains("correct") || btns[0].classList.contains("wrong") || btns[0].classList.contains("reveal")) return;
+
+  const item = state.queue[state.current];
+  const picked = state._reverseOptions[idx];
+  const correct = picked === state._reverseAnswer;
+
+  btns.forEach((btn, i) => {
+    btn.style.pointerEvents = "none";
+    if (i === idx) btn.classList.add(correct ? "correct" : "wrong");
+    if (!correct && state._reverseOptions[i] === state._reverseAnswer) btn.classList.add("reveal");
+  });
+
+  handleResult(correct, item);
+}
+
+// ─── Shared result handler ───
+
+function handleResult(correct, item) {
+  state.answered++;
+  state.history.push({ q: item.q, best: item.best, correct, isRetry: item.isRetry });
+
+  if (correct) {
+    if (!item.isRetry) state.firstTryCorrect++;
+    state.streak++;
+    if (state.streak > state.bestStreak) state.bestStreak = state.streak;
+  } else {
+    state.streak = 0;
+    const prev = state.wrongMap.get(item.id) || 0;
+    state.wrongMap.set(item.id, prev + 1);
+    // Re-add with a DIFFERENT format so they see it from a new angle
+    const newFormat = pick(["type","choice","tf","reverse"].filter(f => f !== item.format));
+    const insertAt = Math.min(state.current + 2 + Math.floor(Math.random() * 2), state.queue.length);
+    state.queue.splice(insertAt, 0, { ...item, format: newFormat, isRetry: true });
+  }
+
+  document.getElementById("scoreNum").textContent = `${state.firstTryCorrect}/${state.answered}`;
+  document.getElementById("streakText").textContent = state.streak > 1 ? `Streak: ${state.streak}` : "";
+  updatePips();
+
+  // Show feedback + action buttons
+  const fb = document.getElementById("feedback-area");
+  const actions = document.getElementById("action-area");
+
+  if (correct) {
+    fb.innerHTML = `<div class="line green" style="margin:8px 0">  ✓ Correct!</div>`;
+    actions.innerHTML = `
+      <div class="action-row">
+        <button class="btn" onclick="nextQuestion()">Got it →</button>
+      </div>`;
+  } else {
+    fb.innerHTML = `
+      <div class="line red" style="margin:4px 0">  ✗ The answer is: <span style="color:#3fb950;font-weight:600">${item.best}</span></div>
+      <div class="explain">${item.explain}</div>
+      <div class="line dim" style="font-size:12px;margin-top:4px">  ↻ This will come back in a different format</div>
+    `;
+    actions.innerHTML = `
+      <div class="action-row">
+        <button class="btn" onclick="nextQuestion()">Got it →</button>
+        <button class="btn drill-more" onclick="drillMoreOnThis()">Drill me more on this</button>
+      </div>`;
+  }
+
+  state.waitingForUser = true;
+  scrollBottom();
+}
+
+function nextQuestion() {
+  state.waitingForUser = false;
+  state.current++;
+  if (state.current < state.queue.length) {
+    showQuestion();
+  } else {
+    showResults();
+  }
+}
+
+function drillMoreOnThis() {
+  // Add 2 more copies of this question in different formats, spread out
+  const item = state.queue[state.current];
+  const usedFormats = [item.format];
+  const allFormats = ["type","choice","tf","reverse"];
+
+  for (let i = 0; i < 2; i++) {
+    const available = allFormats.filter(f => !usedFormats.includes(f));
+    const fmt = available.length > 0 ? pick(available) : pick(allFormats);
+    usedFormats.push(fmt);
+    const insertAt = Math.min(state.current + 2 + i + Math.floor(Math.random() * 2), state.queue.length);
+    state.queue.splice(insertAt, 0, { ...item, format: fmt, isRetry: true });
+  }
+
+  // Visual confirmation
+  const btn = document.querySelector(".btn.drill-more");
+  if (btn) { btn.textContent = "Added! ✓"; btn.style.pointerEvents = "none"; btn.style.opacity = "0.5"; }
+
+  scrollBottom();
+}
+
+function showHint() {
+  const item = state.queue[state.current];
+  document.getElementById("hint-area").innerHTML = `<div class="hint-text">💡 ${item.hint}</div>`;
+  const input = document.getElementById("input");
+  if (input) input.focus();
+}
+
+function updatePips() {
+  const remaining = state.queue.length - state.current;
+  let html = "";
+  state.history.forEach(h => {
+    html += `<div class="pip ${h.correct ? 'correct' : (h.isRetry ? 'retry' : 'wrong')}"></div>`;
+  });
+  if (remaining > 0) html += `<div class="pip current"></div>`;
+  for (let i = 1; i < remaining; i++) html += `<div class="pip"></div>`;
+  document.getElementById("pips").innerHTML = html;
+}
+
+// ─── Results ───
+
+function showResults() {
+  scorebar.style.display = "none";
+  const total = state.originalCount;
+  const pct = Math.round(state.firstTryCorrect / total * 100);
+
+  let msg, color;
+  if (pct === 100) { msg = "Perfect on the first try!"; color = "#3fb950"; }
+  else if (pct >= 80) { msg = "Almost perfect! Great job."; color = "#3fb950"; }
+  else if (pct >= 50) { msg = "Good progress. Keep drilling!"; color = "#d29922"; }
+  else { msg = "You're learning — run it again!"; color = "#f85149"; }
+
+  let html = `
+    <div class="result-card">
+      <div class="big-score" style="color:${color}">${state.firstTryCorrect}/${total}</div>
+      <div class="pct">${pct}% first-try accuracy</div>
+      <div class="msg">${msg}</div>
+      ${state.bestStreak > 1 ? `<div class="msg" style="color:#d29922">Best streak: ${state.bestStreak} in a row</div>` : ""}
+      ${state.wrongMap.size > 0 ? `<div class="msg dim">Retried ${state.wrongMap.size} question${state.wrongMap.size>1?'s':''} until correct</div>` : ""}
+    </div>
+  `;
+
+  if (state.wrongMap.size > 0) {
+    html += `<div class="line dim" style="margin-bottom:6px">Needed extra practice:</div><div class="review-list">`;
+    const seen = new Set();
+    state.history.forEach(h => {
+      if (!h.correct && !seen.has(h.q)) {
+        seen.add(h.q);
+        html += `<div class="review-item"><span class="q">${h.q}</span><br><span class="a">${h.best}</span></div>`;
+      }
+    });
+    html += `</div>`;
+  }
+
+  html += `
+    <div style="text-align:center;margin-top:16px">
+      <button class="btn" onclick="showMenu()">Play Again</button>
+    </div>`;
+
+  render(html);
+  scrollBottom();
+}
+
+// ─── Keyboard shortcuts for choice/tf ───
+document.addEventListener("keydown", e => {
+  if (state.waitingForUser && e.key === "Enter") { nextQuestion(); return; }
+  const item = state.queue?.[state.current];
+  if (!item || state.waitingForUser) return;
+
+  if (item.format === "choice" || item.format === "reverse") {
+    const map = { a: 0, b: 1, c: 2, d: 3, "1": 0, "2": 1, "3": 2, "4": 3 };
+    if (map[e.key.toLowerCase()] !== undefined) {
+      if (item.format === "choice") submitChoice(map[e.key.toLowerCase()]);
+      else submitReverse(map[e.key.toLowerCase()]);
+    }
+  }
+  if (item.format === "tf") {
+    if (e.key.toLowerCase() === "t" || e.key === "1") submitTF(true);
+    if (e.key.toLowerCase() === "f" || e.key === "2") submitTF(false);
+  }
+});
+
+// Init
+showMenu();
+</script>
+</body>
+</html>
