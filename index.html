@@ -198,6 +198,23 @@
   .stat-label { margin-top: 2px; }
   .stat-value.streak-val { color: #d29922; }
 
+  /* Difficulty selector */
+  .diff-btns { display: flex; gap: 8px; margin: 10px 0 16px; }
+  .diff-btn {
+    flex: 1; padding: 10px 8px; border-radius: 8px; font-family: inherit;
+    font-size: 13px; cursor: pointer; text-align: center; transition: all 0.15s;
+    border: 2px solid #21262d; background: #161b22; color: #8b949e;
+  }
+  .diff-btn:hover { border-color: #30363d; color: #c9d1d9; }
+  .diff-btn.active { color: #f0f6fc; }
+  .diff-btn.active.beginner { border-color: #3fb950; background: #0f2d16; }
+  .diff-btn.active.intermediate { border-color: #58a6ff; background: #0d1f3c; }
+  .diff-btn.active.advanced { border-color: #f85149; background: #2d0f0f; }
+  .diff-btn .diff-icon { font-size: 18px; display: block; margin-bottom: 4px; }
+  .diff-btn .diff-label { font-weight: 700; display: block; }
+  .diff-btn .diff-desc { font-size: 10px; color: #484f58; display: block; margin-top: 2px; }
+  .diff-btn.active .diff-desc { color: #8b949e; }
+
   .back-btn {
     background: none; border: none; color: #484f58; font-family: inherit;
     font-size: 12px; cursor: pointer; padding: 4px 0; margin-bottom: 8px;
@@ -446,6 +463,21 @@ function getDescDistractors(item, count) {
 
 function pickFormat(item) {
   const r = Math.random();
+  const diff = state.difficulty || "intermediate";
+
+  if (diff === "beginner") {
+    // Mostly recognition: 15% type, 50% choice, 35% reverse
+    if (r < 0.15) return "type";
+    if (r < 0.65) return "choice";
+    return "reverse";
+  }
+  if (diff === "advanced") {
+    // Mostly recall: 75% type, 10% choice, 15% reverse
+    if (r < 0.75) return "type";
+    if (r < 0.85) return "choice";
+    return "reverse";
+  }
+  // Intermediate (default)
   if (r < 0.35) return "type";
   if (r < 0.70) return "choice";
   return "reverse";
@@ -578,6 +610,7 @@ function showMenu() {
 
 function showSizePicker(catKey) {
   state.catKey = catKey;
+  state.difficulty = state.difficulty || "intermediate";
   scorebar.style.display = "none";
 
   const isMixed = catKey === "mixed";
@@ -598,9 +631,28 @@ function showSizePicker(catKey) {
     html += `<button class="btn secondary" onclick="showLearn('${catKey}')" style="margin-bottom:12px;width:100%;text-align:center;">📖 Learn first — browse all commands</button>`;
   }
 
+  // Difficulty selector
+  const diff = state.difficulty;
+  html += `
+    <div class="size-picker-title">Difficulty</div>
+    <div class="diff-btns">
+      <button class="diff-btn beginner ${diff==='beginner'?'active':''}" onclick="setDifficulty('beginner','${catKey}')">
+        <span class="diff-label">Beginner</span>
+        <span class="diff-desc">Multiple choice. Hints shown.</span>
+      </button>
+      <button class="diff-btn intermediate ${diff==='intermediate'?'active':''}" onclick="setDifficulty('intermediate','${catKey}')">
+        <span class="diff-label">Intermediate</span>
+        <span class="diff-desc">Mixed formats. Hints on click.</span>
+      </button>
+      <button class="diff-btn advanced ${diff==='advanced'?'active':''}" onclick="setDifficulty('advanced','${catKey}')">
+        <span class="diff-label">Advanced</span>
+        <span class="diff-desc">Type from memory. No hints.</span>
+      </button>
+    </div>`;
+
   html += `
     <div class="size-picker">
-      <div class="size-picker-title">Practice — how many questions?</div>
+      <div class="size-picker-title">How many questions?</div>
       <div class="size-btns">
         <button class="size-btn" onclick="launchDrill('${catKey}', ${quickN})">
           <span class="size-num">${quickN}</span>
@@ -618,6 +670,11 @@ function showSizePicker(catKey) {
     </div>`;
 
   render(html);
+}
+
+function setDifficulty(level, catKey) {
+  state.difficulty = level;
+  showSizePicker(catKey);
 }
 
 // ── Learn mode (flashcards) ──
@@ -718,7 +775,7 @@ function showQuestion() {
 function renderType(item) {
   return `
     <div class="line heading" style="margin:8px 0 12px">${item.q}</div>
-    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    ${getHintHtml()}
     <div id="feedback-area"></div>
     <div class="input-row"><span class="prompt-symbol">$</span>
       <input type="text" id="input" placeholder="type your answer..." autocomplete="off" autofocus spellcheck="false">
@@ -747,7 +804,7 @@ function renderChoice(item) {
     c += `<button class="choice-btn" data-idx="${i}" onclick="submitChoice(${i})"><span class="choice-key">${keys[i]}</span>${opt}</button>`;
   });
   return `<div class="line heading" style="margin:8px 0 12px">${item.q}</div>
-    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    ${getHintHtml()}
     ${c}</div><div id="feedback-area"></div><div id="action-area"></div>`;
 }
 
@@ -776,7 +833,7 @@ function renderTF(item) {
   state._tfCorrectAnswer = isTrue;
   return `<div class="line heading" style="margin:8px 0 8px">Is this statement correct?</div>
     <div class="tf-statement"><span class="tf-cmd">${item.best}</span><span class="tf-arrow">→</span>${shownDesc}</div>
-    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    ${getHintHtml()}
     <div class="tf-buttons" id="tf-buttons">
       <button class="tf-btn true-btn" onclick="submitTF(true)">TRUE</button>
       <button class="tf-btn false-btn" onclick="submitTF(false)">FALSE</button>
@@ -806,7 +863,7 @@ function renderReverse(item) {
   });
   return `<div class="line heading" style="margin:8px 0 8px">What does this command do?</div>
     <div class="reverse-cmd"><code>${item.best}</code></div>
-    <div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>
+    ${getHintHtml()}
     ${c}</div><div id="feedback-area"></div><div id="action-area"></div>`;
 }
 
@@ -903,6 +960,14 @@ function showHint() {
   document.getElementById("hint-area").innerHTML = `<div class="hint-text">💡 ${item.hint}</div>`;
   const input = document.getElementById("input");
   if (input) input.focus();
+}
+
+function getHintHtml() {
+  const diff = state.difficulty || "intermediate";
+  const item = state.queue[state.current];
+  if (diff === "advanced") return `<div id="hint-area"></div>`;
+  if (diff === "beginner") return `<div id="hint-area"><div class="hint-text">💡 ${item.hint}</div></div>`;
+  return `<div id="hint-area"><button class="hint-btn" onclick="showHint()">hint</button></div>`;
 }
 
 function updatePips() {
