@@ -161,6 +161,49 @@
     font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; margin-left: 8px;
   }
   .action-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  /* Progress bars on category cards */
+  .cat-progress { margin-top: 8px; }
+  .cat-progress-bar {
+    height: 4px; border-radius: 2px; background: #21262d; overflow: hidden; margin-top: 4px;
+  }
+  .cat-progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+  .cat-progress-fill.low { background: #f85149; }
+  .cat-progress-fill.mid { background: #d29922; }
+  .cat-progress-fill.high { background: #3fb950; }
+  .cat-progress-text { font-size: 10px; color: #484f58; display: flex; justify-content: space-between; }
+  .cat-progress-text .best { color: #3fb950; }
+
+  /* Size picker */
+  .size-picker { margin: 16px 0; }
+  .size-picker-title { color: #8b949e; font-size: 13px; margin-bottom: 10px; }
+  .size-btns { display: flex; gap: 8px; }
+  .size-btn {
+    flex: 1; background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 16px 12px; color: #c9d1d9; font-family: inherit; font-size: 14px;
+    cursor: pointer; text-align: center; transition: all 0.15s;
+  }
+  .size-btn:hover { background: #1c2333; border-color: #58a6ff; color: #f0f6fc; }
+  .size-btn .size-num { display: block; font-size: 24px; font-weight: 700; color: #58a6ff; }
+  .size-btn .size-label { display: block; font-size: 11px; color: #484f58; margin-top: 4px; }
+
+  /* Stats bar on menu */
+  .stats-bar {
+    display: flex; gap: 16px; margin: 12px 0; padding: 10px 14px;
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    font-size: 12px; color: #484f58; justify-content: center; flex-wrap: wrap;
+  }
+  .stat-item { text-align: center; }
+  .stat-value { color: #f0f6fc; font-weight: 700; font-size: 16px; display: block; }
+  .stat-label { margin-top: 2px; }
+  .stat-value.streak-val { color: #d29922; }
+
+  .back-btn {
+    background: none; border: none; color: #484f58; font-family: inherit;
+    font-size: 12px; cursor: pointer; padding: 4px 0; margin-bottom: 8px;
+  }
+  .back-btn:hover { color: #8b949e; }
+
   @media (max-width: 500px) {
     .categories { grid-template-columns: 1fr; }
     .choices { grid-template-columns: 1fr; }
@@ -387,6 +430,58 @@ function pickFormat(item) {
 }
 
 // ═══════════════════════════════════════════
+//  PROGRESS TRACKING (localStorage)
+// ═══════════════════════════════════════════
+
+const STORAGE_KEY = "terminal_drills_progress";
+
+function loadProgress() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (data && data.version === 2) return data;
+  } catch(e) {}
+  return {
+    version: 2,
+    totalDrills: 0,
+    totalQuestions: 0,
+    totalCorrect: 0,
+    dayStreak: 0,
+    lastPlayedDate: null,
+    categories: {}
+  };
+}
+
+function saveProgress(catKey, score, total) {
+  const p = loadProgress();
+  const today = new Date().toISOString().slice(0, 10);
+
+  p.totalDrills++;
+  p.totalQuestions += total;
+  p.totalCorrect += score;
+
+  // Day streak
+  if (p.lastPlayedDate === today) {
+    // already played today, streak stays
+  } else {
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    p.dayStreak = (p.lastPlayedDate === yesterday) ? p.dayStreak + 1 : 1;
+  }
+  p.lastPlayedDate = today;
+
+  // Category stats
+  if (catKey) {
+    const pct = Math.round(score / total * 100);
+    if (!p.categories[catKey]) p.categories[catKey] = { bestPct: 0, timesPlayed: 0, lastPct: 0 };
+    const c = p.categories[catKey];
+    c.timesPlayed++;
+    c.lastPct = pct;
+    if (pct > c.bestPct) c.bestPct = pct;
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+}
+
+// ═══════════════════════════════════════════
 //  STATE & RENDERING
 // ═══════════════════════════════════════════
 
@@ -400,44 +495,110 @@ function showMenu() {
   state = {
     queue: [], current: 0, answered: 0, firstTryCorrect: 0,
     streak: 0, bestStreak: 0, history: [], wrongMap: new Map(),
-    originalCount: 0, waitingForUser: false
+    originalCount: 0, waitingForUser: false, catKey: null
   };
   scorebar.style.display = "none";
 
-  let html = `
-    <div class="line bold heading">Terminal & Claude Code Drills</div>
-    <div class="line dim">4 question types. Shuffled every time. Wrong answers come back.</div>
-    <div class="line" style="margin-top:16px; color:#8b949e;">Pick a category:</div>
-    <div class="categories">
-  `;
+  const p = loadProgress();
+
+  let html = `<div class="line bold heading">Terminal & Claude Code Drills</div>`;
+
+  // Stats bar (only show if they've played before)
+  if (p.totalDrills > 0) {
+    const avgPct = Math.round(p.totalCorrect / p.totalQuestions * 100) || 0;
+    html += `<div class="stats-bar">
+      <div class="stat-item"><span class="stat-value">${p.totalDrills}</span><span class="stat-label">drills done</span></div>
+      <div class="stat-item"><span class="stat-value">${avgPct}%</span><span class="stat-label">avg accuracy</span></div>
+      <div class="stat-item"><span class="stat-value streak-val">${p.dayStreak} day${p.dayStreak!==1?'s':''}</span><span class="stat-label">streak</span></div>
+    </div>`;
+  } else {
+    html += `<div class="line dim">4 question types. Shuffled every time. Wrong answers come back.</div>`;
+  }
+
+  html += `<div class="line" style="margin-top:12px; color:#8b949e;">Pick a category:</div><div class="categories">`;
 
   const cats = Object.keys(DRILLS);
   cats.forEach((key, i) => {
     const d = DRILLS[key];
+    const cp = p.categories[key];
+    let progressHtml = "";
+    if (cp && cp.timesPlayed > 0) {
+      const fillClass = cp.bestPct >= 80 ? "high" : cp.bestPct >= 50 ? "mid" : "low";
+      progressHtml = `<div class="cat-progress">
+        <div class="cat-progress-text">
+          <span>Played ${cp.timesPlayed}x</span>
+          <span class="best">Best: ${cp.bestPct}%</span>
+        </div>
+        <div class="cat-progress-bar"><div class="cat-progress-fill ${fillClass}" style="width:${cp.bestPct}%"></div></div>
+      </div>`;
+    }
+
     html += `
-      <button class="cat-btn" onclick="startDrill('${key}')">
+      <button class="cat-btn" onclick="showSizePicker('${key}')">
         <span class="cat-num">${i + 1}</span>${d.title}
         <span class="cat-desc">${d.desc} — ${d.questions.length} questions</span>
+        ${progressHtml}
       </button>`;
   });
 
   html += `
-      <button class="cat-btn" onclick="startMixed()" style="grid-column: 1 / -1;">
+      <button class="cat-btn" onclick="showSizePicker('mixed')" style="grid-column: 1 / -1;">
         <span class="cat-num">${cats.length + 1}</span>Mixed Drill
-        <span class="cat-desc">Random from all categories — 15 questions</span>
+        <span class="cat-desc">Random from all categories</span>
       </button>
     </div>`;
 
   render(html);
 }
 
-function startDrill(cat) {
-  const questions = shuffle(DRILLS[cat].questions.map((q, i) => ({ ...q, id: cat+"_"+i, cat })));
-  initDrill(questions);
+// ── Size picker ──
+
+function showSizePicker(catKey) {
+  state.catKey = catKey;
+  scorebar.style.display = "none";
+
+  const isMixed = catKey === "mixed";
+  const d = isMixed ? null : DRILLS[catKey];
+  const maxQ = isMixed ? getAllQuestions().length : d.questions.length;
+  const title = isMixed ? "Mixed Drill" : d.title;
+
+  const quickN = Math.min(5, maxQ);
+  const standardN = Math.min(10, maxQ);
+  const fullN = maxQ;
+
+  let html = `
+    <button class="back-btn" onclick="showMenu()">← Back to categories</button>
+    <div class="line bold heading">${title}</div>
+    <div class="size-picker">
+      <div class="size-picker-title">How many questions?</div>
+      <div class="size-btns">
+        <button class="size-btn" onclick="launchDrill('${catKey}', ${quickN})">
+          <span class="size-num">${quickN}</span>
+          <span class="size-label">Quick</span>
+        </button>
+        <button class="size-btn" onclick="launchDrill('${catKey}', ${standardN})">
+          <span class="size-num">${standardN}</span>
+          <span class="size-label">Standard</span>
+        </button>
+        <button class="size-btn" onclick="launchDrill('${catKey}', ${fullN})">
+          <span class="size-num">${fullN}</span>
+          <span class="size-label">Full</span>
+        </button>
+      </div>
+    </div>`;
+
+  render(html);
 }
 
-function startMixed() {
-  initDrill(shuffle(getAllQuestions()).slice(0, 15));
+function launchDrill(catKey, count) {
+  state.catKey = catKey;
+  let questions;
+  if (catKey === "mixed") {
+    questions = shuffle(getAllQuestions()).slice(0, count);
+  } else {
+    questions = shuffle(DRILLS[catKey].questions.map((q, i) => ({ ...q, id: catKey+"_"+i, cat: catKey }))).slice(0, count);
+  }
+  initDrill(questions);
 }
 
 function initDrill(questions) {
@@ -665,6 +826,10 @@ function showResults() {
   scorebar.style.display = "none";
   const total = state.originalCount;
   const pct = Math.round(state.firstTryCorrect / total * 100);
+
+  // Save progress
+  saveProgress(state.catKey === "mixed" ? null : state.catKey, state.firstTryCorrect, total);
+
   let msg, color;
   if (pct === 100) { msg = "Perfect on the first try!"; color = "#3fb950"; }
   else if (pct >= 80) { msg = "Almost perfect! Great job."; color = "#3fb950"; }
@@ -691,8 +856,39 @@ function showResults() {
     html += `</div>`;
   }
 
+  // Suggest next category
+  const p = loadProgress();
+  const cats = Object.keys(DRILLS);
+  let suggestion = null;
+
+  // Find the category with lowest best score, or one never played
+  const unplayed = cats.filter(c => !p.categories[c] || p.categories[c].timesPlayed === 0);
+  if (unplayed.length > 0) {
+    suggestion = { key: unplayed[0], reason: "You haven't tried this one yet" };
+  } else {
+    let worst = null, worstPct = 101;
+    cats.forEach(c => {
+      const cp = p.categories[c];
+      if (cp && cp.bestPct < worstPct && c !== state.catKey) {
+        worstPct = cp.bestPct;
+        worst = c;
+      }
+    });
+    if (worst) suggestion = { key: worst, reason: `Your lowest score (${p.categories[worst].bestPct}%)` };
+  }
+
   html += `<div style="text-align:center;margin-top:16px">
-    <button class="btn" onclick="showMenu()">Play Again</button></div>`;
+    <button class="btn" onclick="showSizePicker('${state.catKey || 'mixed'}')">Retry this drill</button>
+    <button class="btn secondary" onclick="showMenu()">All categories</button>
+  </div>`;
+
+  if (suggestion) {
+    html += `<div style="text-align:center;margin-top:10px">
+      <div class="line dim" style="font-size:12px;margin-bottom:6px">Suggested next: ${suggestion.reason}</div>
+      <button class="btn drill-more" onclick="showSizePicker('${suggestion.key}')">${DRILLS[suggestion.key].title} →</button>
+    </div>`;
+  }
+
   render(html);
   scrollBottom();
 }
