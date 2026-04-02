@@ -204,6 +204,29 @@
   }
   .back-btn:hover { color: #8b949e; }
 
+  /* Learn mode / flashcards */
+  .flashcard {
+    background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+    padding: 14px 16px; margin: 8px 0; cursor: pointer; transition: all 0.15s;
+  }
+  .flashcard:hover { border-color: #30363d; }
+  .flashcard .fc-q { color: #c9d1d9; font-size: 13px; line-height: 1.5; }
+  .flashcard .fc-a {
+    display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #21262d;
+  }
+  .flashcard.open .fc-a { display: block; }
+  .flashcard .fc-cmd { color: #3fb950; font-weight: 700; font-size: 15px; }
+  .flashcard .fc-explain { color: #8b949e; font-size: 12px; margin-top: 6px; line-height: 1.5; }
+  .flashcard .fc-explain strong { color: #58a6ff; }
+  .flashcard .fc-explain .when { color: #d29922; display: block; margin-top: 4px; font-style: italic; }
+  .flashcard .fc-tap { color: #30363d; font-size: 11px; float: right; }
+  .flashcard.open .fc-tap { display: none; }
+  .learn-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .learn-count { color: #484f58; font-size: 12px; }
+
   @media (max-width: 500px) {
     .categories { grid-template-columns: 1fr; }
     .choices { grid-template-columns: 1fr; }
@@ -253,7 +276,7 @@ const DRILLS = {
       { q: "The conversation is getting long and Claude seems confused. What do you do?", best: "/clear to start fresh", desc: "Clear the conversation to reset Claude's context", accept: s => hasAny(s,["/clear","/reset","/new","clear","start fresh","new"]), hint: "Sometimes the best fix is a clean slate.", explain: "<strong>/clear</strong> — starts a fresh conversation. Your files aren't affected.<span class='when'>Use this: when Claude keeps misunderstanding you, or you're switching to a completely different task.</span>" },
       { q: "You want to switch to a different project. What's the simplest way?", best: "Exit Claude (Ctrl+D), cd to the other folder, start claude again", desc: "Exit, navigate, and restart Claude in the new folder", accept: s => (has(s,"exit") || has(s,"ctrl") || has(s,"quit") || has(s,"close")) && (has(s,"cd") || has(s,"folder") || has(s,"navigate")), hint: "You need to leave Claude, go to the new folder, and start fresh.", explain: "<strong>Ctrl+D</strong> to exit, <strong>cd ~/other-project</strong>, then <strong>claude</strong>.<span class='when'>Use this: when you're done with one project and want to switch to another. Claude always works on the folder you started it in.</span>" },
       { q: "You want to save the work Claude did before closing", best: "git add . && git commit -m 'message'", desc: "Save your work with git before ending the session", accept: s => (has(s,"git") && has(s,"commit")) || has(s,"ask claude") || has(s,"tell claude"), hint: "Use git to take a snapshot, or just ask Claude to do it.", explain: "Run <strong>git add . && git commit -m 'save progress'</strong> — or just tell Claude <strong>'commit my changes'</strong>.<span class='when'>Use this: before closing Terminal or ending your session, so nothing is lost.</span>" },
-      { q: "You want to see what Claude is doing under the hood (which files it reads, etc.)", best: "Ctrl+O (verbose mode)", desc: "Toggle verbose output to see Claude's actions", accept: s => hasAll(s,["ctrl","o"]) || hasAll(s,["control","o"]) || has(s,"verbose"), hint: "A keyboard shortcut that toggles detailed output.", explain: "<strong>Ctrl+O</strong> — shows every tool Claude uses: file reads, searches, edits.<span class='when'>Use this: when you're curious what Claude is actually doing, or when debugging why something went wrong.</span>" },
+      { q: "Claude is done but you're not sure what it actually changed. What do you check?", best: "/diff", desc: "Review what Claude changed in your files", accept: s => has(s,"/diff") || has(s,"diff"), hint: "A slash command that shows the before and after.", explain: "<strong>/diff</strong> — shows every file Claude touched, with green (added) and red (removed) lines.<span class='when'>Use this: after every task Claude completes. It's the best way to verify Claude did what you expected.</span>" },
       { q: "Someone sent you a GitHub link to a project. How do you download it and start working?", best: "git clone [URL] then cd into it then claude", desc: "Clone the repo, enter it, start Claude", accept: s => has(s,"git") && has(s,"clone"), hint: "Three steps: download it, enter the folder, start Claude.", explain: "<strong>git clone URL</strong>, then <strong>cd project-name</strong>, then <strong>claude</strong>.<span class='when'>Use this: the first time you work on someone else's project from GitHub.</span>" },
       { q: "You made a mistake in what you told Claude. How do you take it back?", best: "Ctrl+C to stop, then give the correct instruction", desc: "Cancel and re-instruct Claude", accept: s => hasAll(s,["ctrl","c"]) || hasAll(s,["control","c"]) || hasAny(s,["stop","cancel","undo"]), hint: "Stop what's happening, then try again with better instructions.", explain: "<strong>Ctrl+C</strong> to stop Claude, then type your corrected instruction.<span class='when'>Use this: when you realize mid-generation that you asked for the wrong thing.</span>" },
     ]
@@ -341,7 +364,7 @@ const DRILLS = {
       { q: "What does the / prefix do in Claude Code?", best: "Opens the slash command menu", desc: "Accesses built-in Claude Code commands", accept: s => hasAny(s,["slash","command","menu"]), hint: "It opens a menu of built-in features and actions.", explain: "<strong>/</strong> opens the slash command menu — built-in actions like /clear, /help, /diff.<span class='when'>Use this: whenever you need a built-in feature. Type / and browse what's available.</span>" },
       { q: "Claude is writing a response you don't need. How do you stop it?", best: "Ctrl+C", desc: "Cancels Claude's current output", accept: s => hasAll(s,["ctrl","c"]) || hasAll(s,["control","c"]) || has(s,"escape"), hint: "The same shortcut you'd use to stop any process.", explain: "<strong>Ctrl+C</strong> — stops Claude mid-sentence. Conversation is safe.<span class='when'>Use this: when Claude is rambling, going off-topic, or you already got what you need.</span>" },
       { q: "Check how much context/memory Claude has left", best: "/context", desc: "Shows context window usage", accept: s => has(s,"/context"), hint: "/ plus the word for Claude's available memory/space.", explain: "<strong>/context</strong> — shows how full Claude's memory is.<span class='when'>Use this: in long sessions. If it's nearly full, use /clear to start fresh.</span>" },
-      { q: "Toggle verbose mode to see what Claude is doing step by step", best: "Ctrl+O", desc: "Toggles detailed output of Claude's actions", accept: s => hasAll(s,["ctrl","o"]) || hasAll(s,["control","o"]), hint: "Hold a modifier key plus a letter. O for Output.", explain: "<strong>Ctrl+O</strong> — shows every tool Claude uses.<span class='when'>Use this: when curious what Claude is doing behind the scenes, or when debugging.</span>" },
+      { q: "You want to name your conversation so you can find it later", best: "/rename", desc: "Names your conversation for easy resuming later", accept: s => has(s,"/rename") || has(s,"rename"), hint: "A slash command that gives your session a name.", explain: "<strong>/rename my-website-project</strong> — gives this conversation a name. Later use <strong>/resume</strong> to find it by name.<span class='when'>Use this: when working on multiple projects — naming helps you find the right conversation.</span>" },
       { q: "Write a multi-line message without sending", best: "Shift+Enter", desc: "Adds a new line without sending the message", accept: s => hasAny(s,["shift+enter","shift enter","option+enter","option enter","\\","backslash"]), hint: "Hold a modifier key while pressing the send key.", explain: "<strong>Shift+Enter</strong> or type <strong>\\</strong> then Enter.<span class='when'>Use this: when writing detailed instructions to Claude that need multiple paragraphs.</span>" },
       { q: "Switch between different AI models", best: "/model", desc: "Lets you choose a different AI model", accept: s => hasAny(s,["/model","/config"]), hint: "/ plus the word for what you want to change.", explain: "<strong>/model</strong> — pick Sonnet (faster) or Opus (more thorough).<span class='when'>Use this: Sonnet for quick tasks, Opus for complex ones. Switch anytime mid-conversation.</span>" },
     ]
@@ -568,9 +591,16 @@ function showSizePicker(catKey) {
 
   let html = `
     <button class="back-btn" onclick="showMenu()">← Back to categories</button>
-    <div class="line bold heading">${title}</div>
+    <div class="line bold heading">${title}</div>`;
+
+  // Learn first button (not for mixed)
+  if (!isMixed) {
+    html += `<button class="btn secondary" onclick="showLearn('${catKey}')" style="margin-bottom:12px;width:100%;text-align:center;">📖 Learn first — browse all commands</button>`;
+  }
+
+  html += `
     <div class="size-picker">
-      <div class="size-picker-title">How many questions?</div>
+      <div class="size-picker-title">Practice — how many questions?</div>
       <div class="size-btns">
         <button class="size-btn" onclick="launchDrill('${catKey}', ${quickN})">
           <span class="size-num">${quickN}</span>
@@ -588,6 +618,41 @@ function showSizePicker(catKey) {
     </div>`;
 
   render(html);
+}
+
+// ── Learn mode (flashcards) ──
+
+function showLearn(catKey) {
+  scorebar.style.display = "none";
+  const d = DRILLS[catKey];
+
+  let html = `
+    <button class="back-btn" onclick="showSizePicker('${catKey}')">← Back</button>
+    <div class="learn-header">
+      <div class="line bold heading">${d.title}</div>
+      <div class="learn-count">${d.questions.length} commands</div>
+    </div>
+    <div class="line dim" style="margin-bottom:12px">Tap any card to reveal the answer. Browse them all, then go practice.</div>
+  `;
+
+  d.questions.forEach((q, i) => {
+    html += `
+      <div class="flashcard" onclick="this.classList.toggle('open')">
+        <div class="fc-q">${q.q}<span class="fc-tap">tap to reveal</span></div>
+        <div class="fc-a">
+          <div class="fc-cmd">${q.best}</div>
+          <div class="fc-explain">${q.explain}</div>
+        </div>
+      </div>`;
+  });
+
+  html += `
+    <div style="text-align:center;margin:16px 0">
+      <button class="btn" onclick="showSizePicker('${catKey}')">Ready to practice →</button>
+    </div>`;
+
+  render(html);
+  scrollBottom();
 }
 
 function launchDrill(catKey, count) {
