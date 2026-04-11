@@ -249,6 +249,22 @@
     .choices { grid-template-columns: 1fr; }
     .terminal-body { padding: 14px; min-height: 350px; }
   }
+
+  /* Keyboard hints */
+  .kb-hint { color: #484f58; font-size: 11px; margin-top: 6px; }
+  .kb-hint kbd { background: #21262d; border: 1px solid #30363d; border-radius: 3px; padding: 1px 5px; font-family: inherit; font-size: 10px; color: #8b949e; }
+
+  /* Sandbox */
+  .sb-line { font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .sb-line.cmd { color: #3fb950; }
+  .sb-line.out { color: #c9d1d9; }
+  .sb-line.err { color: #f85149; }
+  .sb-line.muted { color: #484f58; }
+  .sb-line.yellow { color: #d29922; }
+  .sb-line.blue { color: #58a6ff; }
+  #sb-input { flex: 1; background: none; border: none; color: #f0f6fc; font-family: inherit; font-size: 13px; outline: none; caret-color: #58a6ff; }
+  .sb-prompt { color: #3fb950; font-weight: 700; margin-right: 6px; font-size: 13px; user-select: none; white-space: nowrap; }
+  .sb-input-row { display: flex; align-items: center; margin-top: 6px; border-top: 1px solid #21262d; padding-top: 6px; }
 </style>
 </head>
 <body>
@@ -501,7 +517,8 @@ function loadProgress() {
     totalCorrect: 0,
     dayStreak: 0,
     lastPlayedDate: null,
-    categories: {}
+    categories: {},
+    questionStats: {}
   };
 }
 
@@ -535,6 +552,40 @@ function saveProgress(catKey, score, total) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
 }
 
+function saveQuestionResult(id, correct) {
+  const p = loadProgress();
+  if (!p.questionStats) p.questionStats = {};
+  if (!p.questionStats[id]) p.questionStats[id] = { seen: 0, correct: 0 };
+  p.questionStats[id].seen++;
+  if (correct) p.questionStats[id].correct++;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+}
+
+function getQuestionWeight(q) {
+  const p = loadProgress();
+  const stats = p.questionStats && p.questionStats[q.id];
+  if (!stats || stats.seen === 0) return 4;
+  const acc = stats.correct / stats.seen;
+  if (acc >= 1) return 1;
+  if (acc >= 0.75) return 2;
+  if (acc >= 0.5) return 3;
+  return 5;
+}
+
+function weightedSample(arr, count) {
+  const pool = arr.map(q => ({ q, w: getQuestionWeight(q) }));
+  const result = [];
+  while (result.length < count && pool.length > 0) {
+    const total = pool.reduce((s, x) => s + x.w, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < pool.length; i++) {
+      r -= pool[i].w;
+      if (r <= 0) { result.push(pool[i].q); pool.splice(i, 1); break; }
+    }
+  }
+  return result;
+}
+
 // ═══════════════════════════════════════════
 //  STATE & RENDERING
 // ═══════════════════════════════════════════
@@ -544,6 +595,80 @@ const body = document.getElementById("body");
 const scorebar = document.getElementById("scorebar");
 function render(html) { body.innerHTML = html; }
 function scrollBottom() { body.scrollTop = body.scrollHeight; }
+
+function showHowToPlay() {
+  scorebar.style.display = "none";
+  let html = `
+    <button class="back-btn" onclick="showMenu()">← Back to menu</button>
+    <div class="line bold heading">How to Play</div>
+    <div class="line dim" style="margin-bottom:14px">A flashcard game for learning terminal commands and Claude Code.</div>
+
+    <div class="line heading" style="font-size:13px;margin-bottom:6px">WHAT IT IS</div>
+    <div class="explain" style="margin-bottom:12px">
+      Each drill gives you a set of questions about terminal commands. Answer them to earn points.
+      Get one wrong and it comes back later in a different format — you keep going until it sticks.
+      Your scores are saved between sessions, so the game gets smarter over time about what to quiz you on.
+    </div>
+
+    <div class="line heading" style="font-size:13px;margin-bottom:6px">THE 6 CATEGORIES</div>
+    <div class="explain" style="margin-bottom:12px">
+      <strong>Daily Workflow</strong> — Using Claude Code: starting it, approving changes, undoing things<br>
+      <strong>Where Am I?</strong> — Navigation: <code style="color:#3fb950">pwd</code>, <code style="color:#3fb950">ls</code>, <code style="color:#3fb950">cd</code><br>
+      <strong>Files & Folders</strong> — Creating, moving, copying, deleting files<br>
+      <strong>Git Essentials</strong> — Saving and sharing your work with git<br>
+      <strong>Claude Code</strong> — Slash commands (<code style="color:#3fb950">/diff</code>, <code style="color:#3fb950">/clear</code>) and keyboard shortcuts<br>
+      <strong>What Went Wrong?</strong> — Reading error messages and fixing them<br>
+      <strong>Speed Tricks</strong> — Keyboard shortcuts that save time (Tab, Up arrow, Ctrl+R...)
+    </div>
+
+    <div class="line heading" style="font-size:13px;margin-bottom:6px">THE 4 QUESTION FORMATS</div>
+    <div class="explain" style="margin-bottom:4px">
+      <span class="format-tag type">TYPE IT</span> — Type the command from memory<br><br>
+      <span class="format-tag choice">PICK ONE</span> — 4 options, pick the right command<br><br>
+      <span class="format-tag reverse">WHAT DOES IT DO?</span> — Given a command, pick what it does<br><br>
+      <span class="format-tag tf">TRUE / FALSE</span> — Is this description of a command correct?
+    </div>
+    <div class="explain" style="margin-bottom:12px">
+      <span class="when">If you get something wrong, it comes back in a different format until you get it right.</span>
+    </div>
+
+    <div class="line heading" style="font-size:13px;margin-bottom:6px">DIFFICULTY LEVELS</div>
+    <div class="explain" style="margin-bottom:12px">
+      <strong style="color:#3fb950">Beginner</strong> — Mostly multiple choice. Hints always shown.<br>
+      <strong style="color:#58a6ff">Intermediate</strong> — Mixed formats. Hints available on click.<br>
+      <strong style="color:#f85149">Advanced</strong> — Mostly type-from-memory. No hints.
+    </div>
+
+    <div class="line heading" style="font-size:13px;margin-bottom:6px">SPECIAL MODES</div>
+    <div class="explain" style="margin-bottom:12px">
+      <strong style="color:#d29922">⚡ Daily Drill</strong> — 5 questions from your weakest areas. The app tracks which questions you struggle with across sessions and sends those back first.<br><br>
+      <strong style="color:#58a6ff">$_ Sandbox</strong> — A fake terminal where you can practice commands freely. Nothing is real — you can't break anything. Try <code style="color:#3fb950">ls</code>, <code style="color:#3fb950">cd</code>, <code style="color:#3fb950">mkdir</code>, <code style="color:#3fb950">git status</code>, and more. Tab autocomplete and up-arrow history work just like the real thing.
+    </div>
+
+    <div class="line heading" style="font-size:13px;margin-bottom:6px">KEYBOARD SHORTCUTS</div>
+    <div class="explain" style="margin-bottom:16px">
+      <code style="color:#3fb950">1 2 3 4</code> &nbsp;or&nbsp; <code style="color:#3fb950">A B C D</code> — Pick an answer in multiple choice<br>
+      <code style="color:#3fb950">T</code> / <code style="color:#3fb950">F</code> — Answer True / False<br>
+      <code style="color:#3fb950">Enter</code> — Confirm answer or move to next question
+    </div>
+
+    <div style="text-align:center;margin-bottom:8px">
+      <button class="btn" onclick="showMenu()">Start drilling →</button>
+    </div>`;
+  render(html);
+  scrollBottom();
+}
+
+function showDailyDrill() {
+  const all = getAllQuestions();
+  const sorted = all.slice().sort((a, b) => {
+    const wa = getQuestionWeight(a), wb = getQuestionWeight(b);
+    return wb - wa || Math.random() - 0.5;
+  });
+  state.catKey = 'mixed';
+  state.difficulty = state.difficulty || 'intermediate';
+  initDrill(sorted.slice(0, 5));
+}
 
 function showMenu() {
   state = {
@@ -601,6 +726,19 @@ function showMenu() {
         <span class="cat-num">${cats.length + 1}</span>Mixed Drill
         <span class="cat-desc">Random from all categories</span>
       </button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="cat-btn" onclick="showDailyDrill()" style="flex:1;border-color:#d29922">
+        <span class="cat-num" style="color:#d29922">⚡</span>Daily Drill
+        <span class="cat-desc">5 questions from your weakest areas</span>
+      </button>
+      <button class="cat-btn" onclick="showSandbox()" style="flex:1;border-color:#58a6ff">
+        <span class="cat-num" style="color:#58a6ff">$_</span>Sandbox
+        <span class="cat-desc">Practice commands in a fake terminal</span>
+      </button>
+    </div>
+    <div style="text-align:center;margin-top:12px">
+      <button class="back-btn" onclick="showHowToPlay()" style="font-size:12px">? How to play</button>
     </div>`;
 
   render(html);
@@ -724,9 +862,9 @@ function launchDrill(catKey, count) {
   state.catKey = catKey;
   let questions;
   if (catKey === "mixed") {
-    questions = shuffle(getAllQuestions()).slice(0, count);
+    questions = weightedSample(getAllQuestions(), count);
   } else {
-    questions = shuffle(DRILLS[catKey].questions.map((q, i) => ({ ...q, id: catKey+"_"+i, cat: catKey }))).slice(0, count);
+    questions = weightedSample(DRILLS[catKey].questions.map((q, i) => ({ ...q, id: catKey+"_"+i, cat: catKey })), count);
   }
   initDrill(questions);
 }
@@ -805,7 +943,7 @@ function renderChoice(item) {
   });
   return `<div class="line heading" style="margin:8px 0 12px">${item.q}</div>
     ${getHintHtml()}
-    ${c}</div><div id="feedback-area"></div><div id="action-area"></div>`;
+    ${c}</div><div class="kb-hint" style="margin-top:4px">Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> to pick</div><div id="feedback-area"></div><div id="action-area"></div>`;
 }
 
 function submitChoice(idx) {
@@ -837,7 +975,7 @@ function renderTF(item) {
     <div class="tf-buttons" id="tf-buttons">
       <button class="tf-btn true-btn" onclick="submitTF(true)">TRUE</button>
       <button class="tf-btn false-btn" onclick="submitTF(false)">FALSE</button>
-    </div><div id="feedback-area"></div><div id="action-area"></div>`;
+    </div><div class="kb-hint" style="margin-top:4px">Press <kbd>T</kbd> for True, <kbd>F</kbd> for False</div><div id="feedback-area"></div><div id="action-area"></div>`;
 }
 
 function submitTF(answer) {
@@ -864,7 +1002,7 @@ function renderReverse(item) {
   return `<div class="line heading" style="margin:8px 0 8px">What does this command do?</div>
     <div class="reverse-cmd"><code>${item.best}</code></div>
     ${getHintHtml()}
-    ${c}</div><div id="feedback-area"></div><div id="action-area"></div>`;
+    ${c}</div><div class="kb-hint" style="margin-top:4px">Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> to pick</div><div id="feedback-area"></div><div id="action-area"></div>`;
 }
 
 function submitReverse(idx) {
@@ -894,6 +1032,7 @@ function handleResult(correct, item, wrongContext) {
   wrongContext = wrongContext || "";
   state.answered++;
   state.history.push({ q: item.q, best: item.best, correct, isRetry: item.isRetry });
+  if (!item.isRetry) saveQuestionResult(item.id, correct);
 
   if (correct) {
     if (!item.isRetry) state.firstTryCorrect++;
@@ -916,7 +1055,7 @@ function handleResult(correct, item, wrongContext) {
 
   if (correct) {
     fb.innerHTML = `<div class="line green" style="margin:8px 0">  ✓ Correct!</div>`;
-    actions.innerHTML = `<div class="action-row"><button class="btn" onclick="nextQuestion()">Got it →</button></div>`;
+    actions.innerHTML = `<div class="action-row"><button class="btn" onclick="nextQuestion()">Got it →</button><span class="kb-hint" style="margin-left:10px;line-height:34px">or press <kbd>Enter</kbd></span></div>`;
   } else {
     fb.innerHTML = `
       <div class="line red" style="margin:4px 0">  ✗ The answer is: <span style="color:#3fb950;font-weight:600">${item.best}</span></div>
@@ -926,6 +1065,7 @@ function handleResult(correct, item, wrongContext) {
     actions.innerHTML = `<div class="action-row">
       <button class="btn" onclick="nextQuestion()">Got it →</button>
       <button class="btn drill-more" onclick="drillMoreOnThis()">Drill me more on this</button>
+      <span class="kb-hint" style="margin-left:4px;line-height:34px">or <kbd>Enter</kbd></span>
     </div>`;
   }
 
@@ -1048,6 +1188,446 @@ function showResults() {
 
   render(html);
   scrollBottom();
+}
+
+// ═══════════════════════════════════════════
+//  SANDBOX — Fake Terminal
+// ═══════════════════════════════════════════
+
+let sb = null;
+
+function showSandbox() {
+  scorebar.style.display = "none";
+  sb = {
+    cwd: '/Users/noat',
+    home: '/Users/noat',
+    dirs: new Set([
+      '/Users/noat',
+      '/Users/noat/projects',
+      '/Users/noat/projects/website',
+      '/Users/noat/projects/diana-bot',
+      '/Users/noat/Documents',
+      '/Users/noat/terminal-drills',
+    ]),
+    files: {
+      '/Users/noat/notes.txt': 'Remember to practice terminal commands!\nYou got this.',
+      '/Users/noat/projects/website/index.html': '<!DOCTYPE html>\n<html>\n  <head><title>My Site</title></head>\n  <body>\n    <h1>Hello!</h1>\n  </body>\n</html>',
+      '/Users/noat/projects/website/style.css': 'body {\n  font-family: sans-serif;\n}',
+      '/Users/noat/projects/website/README.md': '# My Website\nA personal site.',
+      '/Users/noat/projects/diana-bot/bot.js': '// Diana bot\nconsole.log("hello")',
+      '/Users/noat/projects/diana-bot/package.json': '{\n  "name": "diana-bot",\n  "version": "1.0.0"\n}',
+      '/Users/noat/Documents/notes.txt': 'Meeting notes:\n- Review project\n- Deploy by Friday',
+      '/Users/noat/Documents/resume.pdf': '[binary file — open with: open resume.pdf]',
+      '/Users/noat/terminal-drills/index.html': '<!-- This is the Terminal Drills app! -->',
+    },
+    git: {
+      repos: new Set(['/Users/noat/projects/website', '/Users/noat/projects/diana-bot']),
+      staged: new Set(),
+      modified: new Set(['index.html', 'style.css']),
+      branch: 'main',
+    },
+    history: [],
+    lines: [],
+  };
+  sbAddLine('Welcome to the Sandbox — a safe fake terminal. Nothing here is real, so practice freely!', 'muted');
+  sbAddLine('Type <strong>help</strong> to see commands, or just start with <strong>ls</strong>.', 'muted');
+  sbAddLine('', 'out');
+  renderSandbox();
+}
+
+function sbAddLine(text, cls) { sb.lines.push({ text, cls: cls || 'out' }); }
+
+function sbPromptStr() {
+  return `noat@mac ${sb.cwd.replace(sb.home, '~')} $`;
+}
+
+function sbNormPath(p) {
+  const parts = p.split('/').filter(Boolean);
+  const out = [];
+  for (const part of parts) {
+    if (part === '..') out.pop();
+    else if (part !== '.') out.push(part);
+  }
+  return '/' + out.join('/');
+}
+
+function sbResolve(p) {
+  if (!p || p === '~') return sb.home;
+  if (p.startsWith('~/')) return sb.home + p.slice(1);
+  if (p.startsWith('/')) return sbNormPath(p);
+  return sbNormPath(sb.cwd + '/' + p);
+}
+
+function sbIsDir(p) { return sb.dirs.has(p); }
+function sbIsFile(p) { return Object.prototype.hasOwnProperty.call(sb.files, p); }
+function sbExists(p) { return sbIsDir(p) || sbIsFile(p); }
+
+function sbDirContents(path) {
+  const prefix = path === '/' ? '/' : path + '/';
+  const items = new Set();
+  for (const d of sb.dirs) {
+    if (d !== path && d.startsWith(prefix) && !d.slice(prefix.length).includes('/')) items.add(d.slice(prefix.length));
+  }
+  for (const f of Object.keys(sb.files)) {
+    if (f.startsWith(prefix) && !f.slice(prefix.length).includes('/')) items.add(f.slice(prefix.length));
+  }
+  return [...items].sort();
+}
+
+function sbRunCmd(cmdStr) {
+  if (!cmdStr.trim()) return;
+  sb.history.push(cmdStr.trim());
+  sbAddLine(`${sbPromptStr()} ${cmdStr}`, 'cmd');
+
+  const parts = cmdStr.trim().match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  const prog = parts[0];
+  const args = parts.slice(1).map(a => a.replace(/^["']|["']$/g, ''));
+
+  if (prog === 'pwd') {
+    sbAddLine(sb.cwd, 'out');
+  } else if (prog === 'ls') {
+    sbCmdLs(args);
+  } else if (prog === 'cd') {
+    sbCmdCd(args);
+  } else if (prog === 'mkdir') {
+    sbCmdMkdir(args);
+  } else if (prog === 'touch') {
+    sbCmdTouch(args);
+  } else if (prog === 'rm') {
+    sbCmdRm(args);
+  } else if (prog === 'cat') {
+    sbCmdCat(args);
+  } else if (prog === 'mv') {
+    sbCmdMv(args);
+  } else if (prog === 'cp') {
+    sbCmdCp(args);
+  } else if (prog === 'echo') {
+    sbAddLine(args.join(' '), 'out');
+  } else if (prog === 'clear') {
+    sb.lines = [];
+  } else if (prog === 'git') {
+    sbCmdGit(args);
+  } else if (prog === 'open') {
+    sbCmdOpen(args);
+  } else if (prog === 'claude') {
+    sbAddLine(`✓ Claude Code starting in ${sb.cwd}...`, 'out');
+    sbAddLine('> Hi! What would you like to work on?', 'blue');
+    sbAddLine('(Simulation — open a real terminal to use Claude Code)', 'muted');
+  } else if (prog === 'sudo') {
+    sbAddLine('Password:', 'out');
+    sbAddLine('sudo: 3 incorrect password attempts', 'err');
+  } else if (prog === 'help') {
+    sbCmdHelp();
+  } else if (prog === 'exit') {
+    sbAddLine('Leaving sandbox...', 'muted');
+    renderSandbox();
+    setTimeout(showMenu, 600);
+    return;
+  } else if (prog) {
+    sbAddLine(`${prog}: command not found`, 'err');
+    sbAddLine('Type <strong>help</strong> to see available commands.', 'muted');
+  }
+  renderSandbox();
+}
+
+function sbCmdLs(args) {
+  const showAll = args.some(a => a.match(/^-[a-z]*a/));
+  const showLong = args.some(a => a.match(/^-[a-z]*l/));
+  const targetArg = args.filter(a => !a.startsWith('-'))[0];
+  const target = targetArg ? sbResolve(targetArg) : sb.cwd;
+
+  if (!sbExists(target)) { sbAddLine(`ls: ${targetArg}: No such file or directory`, 'err'); return; }
+  if (sbIsFile(target)) { sbAddLine(target.split('/').pop(), 'out'); return; }
+
+  let contents = sbDirContents(target);
+  if (showAll) contents = ['.', '..', ...contents];
+
+  if (showLong) {
+    contents.forEach(name => {
+      if (name === '.' || name === '..') { sbAddLine(`drwxr-xr-x  2 noat  staff    64 Apr 10 09:12 ${name}`, 'out'); return; }
+      const fp = target === '/' ? '/' + name : target + '/' + name;
+      const isDir = sbIsDir(fp);
+      sbAddLine(`${isDir ? 'd' : '-'}rwxr-xr-x  1 noat  staff  ${isDir ? '  128' : ' 1.2K'} Apr 10 09:12 ${name}${isDir ? '/' : ''}`, isDir ? 'blue' : 'out');
+    });
+  } else {
+    const line = contents.map(name => {
+      const fp = target === '/' ? '/' + name : target + '/' + name;
+      return sbIsDir(fp) ? `<span style="color:#58a6ff">${name}/</span>` : name;
+    }).join('  ');
+    if (line) sbAddLine(line, 'out');
+    else sbAddLine('(empty folder)', 'muted');
+  }
+}
+
+function sbCmdCd(args) {
+  const target = args[0] ? sbResolve(args[0]) : sb.home;
+  if (!sbExists(target)) { sbAddLine(`cd: ${args[0]}: No such file or directory`, 'err'); return; }
+  if (sbIsFile(target)) { sbAddLine(`cd: ${args[0]}: Not a directory`, 'err'); return; }
+  sb.cwd = target;
+}
+
+function sbCmdMkdir(args) {
+  const p = args.includes('-p');
+  const name = args.filter(a => !a.startsWith('-'))[0];
+  if (!name) { sbAddLine('mkdir: missing operand', 'err'); return; }
+  const path = sbResolve(name);
+  const parent = path.split('/').slice(0, -1).join('/') || '/';
+  if (!p && !sbIsDir(parent)) { sbAddLine(`mkdir: ${name}: No such file or directory`, 'err'); return; }
+  if (sbExists(path)) { sbAddLine(`mkdir: ${name}: File exists`, 'err'); return; }
+  if (p) {
+    const parts = path.split('/').filter(Boolean);
+    let cur = '';
+    for (const part of parts) { cur += '/' + part; if (!sb.dirs.has(cur)) sb.dirs.add(cur); }
+  } else {
+    sb.dirs.add(path);
+  }
+}
+
+function sbCmdTouch(args) {
+  if (!args[0]) { sbAddLine('touch: missing operand', 'err'); return; }
+  const path = sbResolve(args[0]);
+  const parent = path.split('/').slice(0, -1).join('/') || '/';
+  if (!sbIsDir(parent)) { sbAddLine(`touch: ${args[0]}: No such file or directory`, 'err'); return; }
+  if (!sbIsFile(path)) sb.files[path] = '';
+}
+
+function sbCmdRm(args) {
+  const recursive = args.some(a => a.match(/^-[a-z]*r/));
+  const name = args.filter(a => !a.startsWith('-'))[0];
+  if (!name) { sbAddLine('rm: missing operand', 'err'); return; }
+  const path = sbResolve(name);
+  if (!sbExists(path)) { sbAddLine(`rm: ${name}: No such file or directory`, 'err'); return; }
+  if (sbIsDir(path) && !recursive) { sbAddLine(`rm: ${name}: is a directory`, 'err'); sbAddLine(`Tip: use <strong>rm -r ${name}</strong> to delete a folder`, 'muted'); return; }
+  if (sbIsDir(path)) {
+    for (const d of [...sb.dirs]) { if (d === path || d.startsWith(path + '/')) sb.dirs.delete(d); }
+    for (const f of Object.keys(sb.files)) { if (f.startsWith(path + '/')) delete sb.files[f]; }
+  } else {
+    delete sb.files[path];
+  }
+}
+
+function sbCmdCat(args) {
+  if (!args[0]) { sbAddLine('cat: missing operand', 'err'); return; }
+  const path = sbResolve(args[0]);
+  if (sbIsDir(path)) { sbAddLine(`cat: ${args[0]}: Is a directory`, 'err'); return; }
+  if (!sbIsFile(path)) { sbAddLine(`cat: ${args[0]}: No such file or directory`, 'err'); return; }
+  const content = sb.files[path];
+  if (!content) { sbAddLine('(empty file)', 'muted'); return; }
+  content.split('\n').forEach(line => sbAddLine(line, 'out'));
+}
+
+function sbCmdMv(args) {
+  const names = args.filter(a => !a.startsWith('-'));
+  if (names.length < 2) { sbAddLine('mv: missing destination operand', 'err'); return; }
+  const src = sbResolve(names[0]), origDest = sbResolve(names[1]);
+  if (!sbExists(src)) { sbAddLine(`mv: ${names[0]}: No such file or directory`, 'err'); return; }
+  const dest = sbIsDir(origDest) ? origDest + '/' + src.split('/').pop() : origDest;
+  if (sbIsFile(src)) { sb.files[dest] = sb.files[src]; delete sb.files[src]; }
+  else {
+    for (const d of [...sb.dirs]) {
+      if (d === src) { sb.dirs.delete(d); sb.dirs.add(dest); }
+      else if (d.startsWith(src + '/')) { sb.dirs.delete(d); sb.dirs.add(dest + d.slice(src.length)); }
+    }
+    for (const f of Object.keys(sb.files)) {
+      if (f.startsWith(src + '/')) { sb.files[dest + f.slice(src.length)] = sb.files[f]; delete sb.files[f]; }
+    }
+  }
+}
+
+function sbCmdCp(args) {
+  const names = args.filter(a => !a.startsWith('-'));
+  if (names.length < 2) { sbAddLine('cp: missing destination operand', 'err'); return; }
+  const src = sbResolve(names[0]), origDest = sbResolve(names[1]);
+  if (!sbIsFile(src)) { sbAddLine(`cp: ${names[0]}: not a regular file (use -r for folders)`, 'err'); return; }
+  const dest = sbIsDir(origDest) ? origDest + '/' + src.split('/').pop() : origDest;
+  sb.files[dest] = sb.files[src];
+}
+
+function sbCmdOpen(args) {
+  if (!args[0]) { sbAddLine('open: missing argument', 'err'); return; }
+  if (args[0] === '.') { sbAddLine(`Opening Finder at ${sb.cwd}...`, 'out'); sbAddLine('(In a real terminal, Finder would open here)', 'muted'); return; }
+  const path = sbResolve(args[0]);
+  if (!sbExists(path)) { sbAddLine(`open: ${args[0]}: No such file or directory`, 'err'); return; }
+  sbAddLine(`Opening ${args[0]}...`, 'out');
+  sbAddLine('(In a real terminal, this would open the file in its default app)', 'muted');
+}
+
+function sbCmdGit(args) {
+  const sub = args[0];
+  const inRepo = sb.git.repos.has(sb.cwd);
+
+  if (sub === 'init') {
+    if (inRepo) { sbAddLine(`Reinitialized existing Git repository in ${sb.cwd}/.git/`, 'out'); return; }
+    sb.git.repos.add(sb.cwd); sb.git.staged = new Set(); sb.git.modified = new Set();
+    sbAddLine(`Initialized empty Git repository in ${sb.cwd}/.git/`, 'out'); return;
+  }
+  if (sub === 'clone') {
+    if (!args[1]) { sbAddLine('usage: git clone <url>', 'err'); return; }
+    const name = 'my-project';
+    sbAddLine(`Cloning into '${name}'...`, 'out');
+    sbAddLine('remote: Counting objects: 47, done.', 'out');
+    sbAddLine('Receiving objects: 100% (47/47), 18.42 KiB | 2.30 MiB/s, done.', 'out');
+    sb.dirs.add(sb.cwd + `/${name}`); sb.dirs.add(sb.cwd + `/${name}/src`);
+    sb.files[sb.cwd + `/${name}/README.md`] = '# My Project\nCloned from GitHub.';
+    sb.git.repos.add(sb.cwd + `/${name}`); return;
+  }
+  if (!inRepo) {
+    sbAddLine('fatal: not a git repository (or any of the parent directories): .git', 'err');
+    sbAddLine('Tip: <strong>cd</strong> into a project folder, or run <strong>git init</strong> here', 'muted'); return;
+  }
+  if (sub === 'status') {
+    sbAddLine(`On branch ${sb.git.branch}`, 'out');
+    sbAddLine("Your branch is up to date with 'origin/main'.", 'out');
+    sbAddLine('', 'out');
+    if (sb.git.staged.size > 0) {
+      sbAddLine('Changes to be committed:', 'out');
+      for (const f of sb.git.staged) sbAddLine(`\tmodified:   ${f}`, 'cmd');
+      sbAddLine('', 'out');
+    }
+    if (sb.git.modified.size > 0) {
+      sbAddLine('Changes not staged for commit:', 'out');
+      sbAddLine('  (use "git add <file>..." to stage)', 'muted');
+      for (const f of sb.git.modified) sbAddLine(`\tmodified:   ${f}`, 'err');
+    }
+    if (sb.git.staged.size === 0 && sb.git.modified.size === 0) sbAddLine('nothing to commit, working tree clean', 'out');
+  } else if (sub === 'add') {
+    const target = args[1];
+    if (!target) { sbAddLine('Nothing specified, nothing added.', 'out'); return; }
+    if (target === '.' || target === '-A') {
+      for (const f of sb.git.modified) sb.git.staged.add(f);
+      sb.git.modified.clear();
+    } else {
+      if (sb.git.modified.has(target)) { sb.git.staged.add(target); sb.git.modified.delete(target); }
+      else { sbAddLine(`error: pathspec '${target}' did not match any files known to git`, 'err'); }
+    }
+  } else if (sub === 'commit') {
+    if (sb.git.staged.size === 0) { sbAddLine('nothing to commit, working tree clean', 'out'); return; }
+    const mIdx = args.indexOf('-m');
+    const msg = mIdx >= 0 ? args.slice(mIdx + 1).join(' ') : '';
+    if (!msg) { sbAddLine("error: switch 'm' requires a value", 'err'); sbAddLine("Tip: git commit -m 'your message here'", 'muted'); return; }
+    const n = sb.git.staged.size; sb.git.staged.clear();
+    sbAddLine(`[${sb.git.branch} a3f92b1] ${msg}`, 'out');
+    sbAddLine(` ${n} file${n > 1 ? 's' : ''} changed`, 'out');
+  } else if (sub === 'push') {
+    sbAddLine('Enumerating objects: 3, done.', 'out');
+    sbAddLine('Writing objects: 100% (3/3), 512 bytes | 512.00 KiB/s, done.', 'out');
+    sbAddLine(`To github.com:noat/${sb.cwd.split('/').pop()}.git`, 'out');
+    sbAddLine(`   a3f92b1..c8d4e2f  ${sb.git.branch} -> ${sb.git.branch}`, 'out');
+  } else if (sub === 'pull') {
+    sbAddLine('Already up to date.', 'out');
+  } else if (sub === 'log') {
+    sbAddLine('commit c8d4e2f1a9b3d7e5f2c1a8b4d6e9f3a2b7c5d8e1 (HEAD -> main, origin/main)', 'yellow');
+    sbAddLine('Author: noat <noat@example.com>', 'out');
+    sbAddLine('Date:   Thu Apr 10 09:00:00 2026 -0700', 'out');
+    sbAddLine('', 'out'); sbAddLine('    update styles', 'out'); sbAddLine('', 'out');
+    sbAddLine('commit a3f92b1d5c8e2f4a7b9c3d6e1f2a5b8c4d7e3f6a', 'yellow');
+    sbAddLine('Author: noat <noat@example.com>', 'out');
+    sbAddLine('Date:   Wed Apr  9 14:32:11 2026 -0700', 'out');
+    sbAddLine('', 'out'); sbAddLine('    first version', 'out'); sbAddLine('', 'out');
+    sbAddLine('(press q to exit in the real terminal)', 'muted');
+  } else if (sub === 'diff') {
+    if (sb.git.modified.size === 0 && sb.git.staged.size === 0) { sbAddLine('(no changes to show)', 'muted'); return; }
+    sbAddLine('diff --git a/index.html b/index.html', 'out');
+    sbAddLine('--- a/index.html', 'err'); sbAddLine('+++ b/index.html', 'cmd');
+    sbAddLine('@@ -1,5 +1,6 @@', 'yellow');
+    sbAddLine(' <html>', 'out'); sbAddLine('-  <h1>Hello</h1>', 'err');
+    sbAddLine('+  <h1>Hello World!</h1>', 'cmd'); sbAddLine('+  <p>Welcome</p>', 'cmd');
+    sbAddLine(' </html>', 'out');
+  } else if (sub === 'checkout') {
+    if (args[1] === '-b') {
+      const name = args[2]; if (!name) { sbAddLine("error: switch 'b' requires a value", 'err'); return; }
+      sb.git.branch = name; sbAddLine(`Switched to a new branch '${name}'`, 'out');
+    } else if (args[1]) { sb.git.branch = args[1]; sbAddLine(`Switched to branch '${args[1]}'`, 'out'); }
+  } else {
+    sbAddLine(`git: '${sub}' is not a git command. See 'git help'.`, 'err');
+  }
+}
+
+function sbCmdHelp() {
+  const cmds = [
+    ['pwd','Print current folder path'], ['ls','List files'], ['ls -a','Include hidden files'],
+    ['ls -l','Show details (size, date)'], ['cd folder','Go into a folder'], ['cd ..','Go up one level'],
+    ['cd ~','Go home'], ['mkdir name','Create a folder'], ['mkdir -p a/b','Create nested folders'],
+    ['touch name','Create an empty file'], ['rm file','Delete a file'], ['rm -r folder','Delete a folder'],
+    ['cat file','Show file contents'], ['mv src dest','Move or rename'], ['cp src dest','Copy a file'],
+    ['echo text','Print text'], ['open .','Open Finder here'], ['clear','Clear the screen'],
+    ['git status','Check git status'], ['git add .','Stage all changes'], ["git commit -m 'msg'",'Save a snapshot'],
+    ['git push','Send to GitHub'], ['git pull','Get latest from GitHub'], ['git log','See history'],
+    ['git diff','See what changed'], ['git init','Start a git project'], ['git clone URL','Download a project'],
+    ['claude','Start Claude Code'], ['exit','Leave sandbox'],
+  ];
+  sbAddLine('Available commands:', 'yellow');
+  cmds.forEach(([cmd, desc]) => {
+    sbAddLine(`  <span style="color:#3fb950;display:inline-block;min-width:200px">${cmd}</span><span style="color:#484f58">${desc}</span>`, 'out');
+  });
+}
+
+function renderSandbox() {
+  let html = `
+    <button class="back-btn" onclick="showMenu()">← Back to menu</button>
+    <div class="line bold heading">Sandbox Terminal</div>
+    <div class="line dim" style="margin-bottom:10px">Nothing here is real — practice freely! Type <strong style="color:#c9d1d9">help</strong> to see all commands.</div>
+    <div id="sb-output">`;
+  for (const line of sb.lines) html += `<div class="sb-line ${line.cls}">${line.text}</div>`;
+  html += `</div>
+    <div class="sb-input-row">
+      <span class="sb-prompt">${sbPromptStr()}</span>
+      <input type="text" id="sb-input" placeholder="type a command..." autocomplete="off" spellcheck="false" autofocus>
+    </div>`;
+  render(html);
+
+  const input = document.getElementById('sb-input');
+  if (!input) return;
+  input.focus();
+  let histIdx = sb.history.length;
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const val = input.value; input.value = '';
+      sbRunCmd(val); histIdx = sb.history.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (histIdx > 0) { histIdx--; input.value = sb.history[histIdx]; }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (histIdx < sb.history.length - 1) { histIdx++; input.value = sb.history[histIdx]; }
+      else { histIdx = sb.history.length; input.value = ''; }
+    } else if (e.key === 'Tab') {
+      e.preventDefault(); sbTabComplete(input);
+    }
+  });
+  scrollBottom();
+}
+
+function sbTabComplete(input) {
+  const val = input.value;
+  const parts = val.split(' ');
+  const last = parts[parts.length - 1];
+  const isFirst = parts.length === 1;
+
+  if (isFirst) {
+    const cmds = ['pwd','ls','cd','mkdir','touch','rm','cat','mv','cp','echo','open','clear','git','claude','exit','help'];
+    const matches = cmds.filter(c => c.startsWith(last));
+    if (matches.length === 1) { input.value = matches[0] + ' '; }
+    else if (matches.length > 1) {
+      sbAddLine(matches.join('  '), 'muted');
+      renderSandbox(); const ni = document.getElementById('sb-input'); if (ni) { ni.value = val; ni.focus(); }
+    }
+    return;
+  }
+
+  const prefix = last.includes('/') ? last.slice(0, last.lastIndexOf('/') + 1) : '';
+  const partial = last.includes('/') ? last.slice(last.lastIndexOf('/') + 1) : last;
+  const dir = prefix ? sbResolve(prefix) : sb.cwd;
+  const items = sbDirContents(dir).filter(i => i.startsWith(partial));
+
+  if (items.length === 1) {
+    const fp = dir + '/' + items[0];
+    parts[parts.length - 1] = prefix + items[0] + (sbIsDir(fp) ? '/' : ' ');
+    input.value = parts.join(' ');
+  } else if (items.length > 1) {
+    sbAddLine(items.join('  '), 'muted');
+    renderSandbox(); const ni = document.getElementById('sb-input'); if (ni) { ni.value = val; ni.focus(); }
+  }
 }
 
 document.addEventListener("keydown", e => {
